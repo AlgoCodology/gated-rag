@@ -1,0 +1,1 @@
+Stacked bar chart of total Home University enrolment by faculty (FSE, FEB, FoL, FHSS, FHLS) for the academic years 2021 to 2025. Totals grow from about 17,000 students in 2021 to 18,400 in 2025; FSE is the largest faculty and FoL the smallest.

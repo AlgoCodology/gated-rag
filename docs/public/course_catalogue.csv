@@ -1,0 +1,43 @@
+course_code,title,faculty,level,ects,block,language,coordinator,prerequisites,capacity
+FSE-101,Programming 1,FSE,Bachelor,6,1,English,Dr. L. Jansen,None,300
+FSE-102,Calculus 1,FSE,Bachelor,6,1,English,Dr. M. Peeters,None,300
+FSE-103,Linear Algebra,FSE,Bachelor,6,2,English,Dr. M. Peeters,FSE-102,280
+FSE-201,Algorithms and Data Structures,FSE,Bachelor,6,2,English,Prof. dr. R. Willems,FSE-101,240
+FSE-202,Databases,FSE,Bachelor,6,3,English,Dr. S. Aydin,FSE-101,220
+FSE-301,Machine Learning,FSE,Bachelor,6,3,English,Prof. dr. H. Vermeulen,"FSE-103, FSE-201",150
+FSE-501,Advanced Machine Learning,FSE,Master,6,1,English,Prof. dr. H. Vermeulen,FSE-301,90
+FSE-502,Information Retrieval and RAG Systems,FSE,Master,6,2,English,Dr. T. Nguyen,FSE-202,60
+FSE-503,Distributed Systems,FSE,Master,6,3,English,Dr. A. Bos,FSE-201,80
+FSE-504,Data Science Capstone,FSE,Master,12,4,English,Dr. T. Nguyen,FSE-501,180
+FEB-101,Introduction to Microeconomics,FEB,Bachelor,6,1,English,Dr. P. de Groot,None,350
+FEB-102,Financial Accounting,FEB,Bachelor,6,2,Dutch,Drs. N. Kuiper,None,320
+FEB-103,Statistics for Business,FEB,Bachelor,6,2,English,Dr. J. Hoekstra,None,330
+FEB-201,Corporate Finance,FEB,Bachelor,6,3,English,Prof. dr. P. de Wit,FEB-102,260
+FEB-202,Marketing Management,FEB,Bachelor,6,3,Dutch,Dr. E. van Dijk,None,250
+FEB-301,Behavioural Economics,FEB,Bachelor,6,4,English,Dr. P. de Groot,FEB-101,120
+FEB-501,Strategic Management,FEB,Master,6,1,English,Prof. dr. P. de Wit,None,140
+FEB-502,Sustainable Finance,FEB,Master,6,2,English,Dr. I. Haas,FEB-201,100
+FoL-101,Introduction to Dutch Law,FoL,Bachelor,6,1,Dutch,Mr. dr. S. Koster,None,280
+FoL-102,Constitutional Law,FoL,Bachelor,6,2,Dutch,Mr. dr. B. Maas,None,270
+FoL-201,European Union Law,FoL,Bachelor,6,3,English,Prof. mr. A. Lindner,FoL-102,200
+FoL-202,Contract Law,FoL,Bachelor,6,3,Dutch,Mr. dr. B. Maas,FoL-101,220
+FoL-501,International Human Rights Law,FoL,Master,6,1,English,Prof. mr. A. Lindner,None,70
+FoL-502,Law and Artificial Intelligence,FoL,Master,6,3,English,Mr. dr. C. Vink,None,60
+FHSS-101,Introduction to Sociology,FHSS,Bachelor,6,1,English,Dr. O. El Idrissi,None,300
+FHSS-102,Academic Writing,FHSS,Bachelor,3,1,English,Dr. K. Smit,None,300
+FHSS-103,History of Europe since 1789,FHSS,Bachelor,6,2,English,Dr. W. de Boer,None,200
+FHSS-201,Research Methods in Social Science,FHSS,Bachelor,6,3,English,Dr. K. Smit,FHSS-101,180
+FHSS-202,Cognitive Psychology,FHSS,Bachelor,6,3,English,Dr. D. Verhoeven,None,250
+FHSS-501,Migration and Society,FHSS,Master,6,2,English,Dr. O. El Idrissi,None,60
+FHSS-502,Digital Humanities,FHSS,Master,6,4,English,Dr. W. de Boer,None,50
+FHLS-101,Cell Biology,FHLS,Bachelor,6,1,English,Dr. A. Mol,None,220
+FHLS-102,Anatomy and Physiology,FHLS,Bachelor,9,2,English,Dr. F. Brouwer,None,220
+FHLS-103,Chemistry for Life Sciences,FHLS,Bachelor,6,1,English,Dr. J. Kok,None,220
+FHLS-201,Genetics,FHLS,Bachelor,6,3,English,Dr. A. Mol,FHLS-101,180
+FHLS-202,Public Health,FHLS,Bachelor,6,4,English,Dr. M. Hendrix,None,160
+FHLS-301,Bioinformatics,FHLS,Bachelor,6,4,English,Dr. T. Nguyen,"FHLS-201, FSE-101",90
+FHLS-501,Epidemiology,FHLS,Master,6,1,English,Dr. M. Hendrix,FHLS-202,80
+FHLS-502,Clinical Trials Methodology,FHLS,Master,6,3,English,Prof. dr. F. Brouwer,FHLS-501,60
+UNI-001,Introduction to Academic Integrity,UNI,Bachelor,0,1,English,Education Office,None,3000
+UNI-002,Dutch for Beginners (A1),UNI,Bachelor,3,1,English,Language Centre,None,60
+UNI-003,Dutch for Intermediates (B1),UNI,Bachelor,3,3,English,Language Centre,UNI-002,40

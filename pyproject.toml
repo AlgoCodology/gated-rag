@@ -7,6 +7,9 @@ requires-python = ">=3.13"
 dependencies = [
     "numpy>=2.5.5",
     "pandas>=3.1.1",
+    "pillow>=13.0.0",
+    "pymupdf>=2.1",
+    "qdrant-client>=1.20.0",
     "requests>=2.34.2",
 ]
 
@@ -16,3 +19,9 @@ rag_project = "rag_project:main"
 [build-system]
 requires = ["uv_build>=0.13.9,<0.14.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.11.2",
+    "reportlab>=5.1.0",
+]
