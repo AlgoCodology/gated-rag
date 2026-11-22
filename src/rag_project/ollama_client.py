@@ -23,18 +23,19 @@ class OllamaError(RuntimeError):
     """Raised when Ollama is unreachable or returns an error."""
 
 
-def _post(endpoint: str, payload: dict) -> dict:
+def _post(endpoint: str, payload: dict, timeout: int | None = None) -> dict:
     """Send a POST request to Ollama and return the parsed JSON reply."""
     url = f"{config.OLLAMA_URL}{endpoint}"
+    timeout = timeout or config.REQUEST_TIMEOUT_SECONDS
     try:
-        response = requests.post(url, json=payload, timeout=config.REQUEST_TIMEOUT_SECONDS)
+        response = requests.post(url, json=payload, timeout=timeout)
     except requests.ConnectionError as exc:
         raise OllamaError(
             f"Cannot reach Ollama at {config.OLLAMA_URL}. Is it running? (try: `ollama serve`)"
         ) from exc
     except requests.Timeout as exc:
         raise OllamaError(
-            f"Ollama did not answer within {config.REQUEST_TIMEOUT_SECONDS}s."
+            f"Ollama did not answer within {timeout}s."
         ) from exc
 
     if not response.ok:
@@ -86,8 +87,24 @@ def ask_llm(prompt: str) -> str:
         raise OllamaError(f"Unexpected reply from the chat model: {str(data)[:200]}") from exc
 
 
+def shrink_image(image_bytes: bytes, max_side: int) -> bytes:
+    """Downscale big images: fewer pixels = fewer image tokens = much faster on a CPU."""
+    import io
+
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(image_bytes))
+    if max(image.size) <= max_side:
+        return image_bytes
+    image.thumbnail((max_side, max_side))
+    out = io.BytesIO()
+    image.convert("RGB").save(out, format="JPEG", quality=90)
+    return out.getvalue()
+
+
 def describe_image(image_bytes: bytes, prompt: str, model: str) -> str:
     """Ask a vision model to describe an image (used for image chunks)."""
+    image_bytes = shrink_image(image_bytes, config.VISION_MAX_IMAGE_SIDE)
     data = _post(
         "/api/chat",
         {
@@ -100,7 +117,9 @@ def describe_image(image_bytes: bytes, prompt: str, model: str) -> str:
                     "images": [base64.b64encode(image_bytes).decode("ascii")],
                 }
             ],
+            "options": {"num_predict": 400},  # a caption never needs more than this
         },
+        timeout=config.VISION_TIMEOUT_SECONDS,
     )
     try:
         return data["message"]["content"].strip()

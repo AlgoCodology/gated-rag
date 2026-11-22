@@ -41,3 +41,9 @@
 {"type": "unanswerable", "role": "public", "q": "How do I bake sourdough bread?"}
 {"type": "unanswerable", "role": "public", "q": "What are the tuition fees at Harvard University?"}
 {"type": "unanswerable", "role": "public", "q": "What is the weather forecast for tomorrow?"}
+{"type": "answerable", "role": "public", "q": "Which building houses the IT Service Desk according to the campus map?", "contains": "Building A", "source": "campus_map"}
+{"type": "answerable", "role": "public", "q": "What is the bus stop on the campus map used for?", "contains": "Shuttle", "source": "campus_map"}
+{"type": "answerable", "role": "public", "q": "In the international students chart, what was the share for the Faculty of Humanities and Social Sciences (FHSS) in 2025?", "contains": "19", "source": "chart_international_share"}
+{"type": "answerable", "role": "public", "q": "Which faculty is the largest in the enrolment chart?", "contains": "FSE", "source": "chart_enrolment_by_faculty"}
+{"type": "answerable", "role": "public", "q": "Do you have a picture of a university library interior?", "contains": "library", "source": "photo_library_interior"}
+{"type": "answerable", "role": "public", "q": "Show me what the entrance of a university building at Utrecht Science Park looks like.", "contains": "entrance", "source": "photo_building_entrance"}

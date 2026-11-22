@@ -212,10 +212,14 @@ def caption_image(image_bytes: bytes) -> str | None:
 
 def load_image(path: Path) -> list[Section]:
     sidecar = path.with_suffix(".alt.txt")
-    if sidecar.exists():
-        caption = sidecar.read_text(encoding="utf-8").strip()
-    else:
-        caption = caption_image(path.read_bytes())
+    written = sidecar.read_text(encoding="utf-8").strip() if sidecar.exists() else None
+    if config.IMAGE_DESCRIPTIONS == "both":  # exact human facts + the model's wider coverage
+        generated = caption_image(path.read_bytes())
+        caption = "\n\n".join(filter(None, [written, generated and f"Detailed description: {generated}"]))
+    elif config.IMAGE_DESCRIPTIONS == "vision":  # prefer the model, fall back to the human text
+        caption = caption_image(path.read_bytes()) or written
+    else:  # prefer the human text, fall back to the model
+        caption = written or caption_image(path.read_bytes())
     if not caption:
         print(f"  (skipping {path.name}: no {sidecar.name} and no vision model configured)")
         return []

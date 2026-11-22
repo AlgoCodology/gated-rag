@@ -24,7 +24,12 @@ LLM_NUM_CTX = 8192  # reading space (tokens) for the chat model; Ollama's defaul
 
 # Optional: a vision model that describes images that have no `<name>.alt.txt`
 # sidecar file (e.g. "moondream" or "qwen2.5vl:3b"). None = images need a sidecar.
-VISION_MODEL = None
+VISION_MODEL = "qwen2.5vl:3b"
+# Which description wins when an image has both a hand-written `<name>.alt.txt`
+# and a vision-model caption: "sidecar", "vision" or "both" (hand-written text first, then the model's). Compare with `evaluate --ablate`.
+IMAGE_DESCRIPTIONS = "both"
+VISION_TIMEOUT_SECONDS = 900  # captioning runs once per image and is cached; a CPU is slow
+VISION_MAX_IMAGE_SIDE = 896  # images are shrunk to this many pixels on the long side
 
 # --- RAG behaviour -----------------------------------------------------------
 EMBED_BATCH_SIZE = 64  # chunks sent to the embed model per HTTP request

@@ -123,6 +123,7 @@ def build(name: str, **patches) -> index_mod.Index:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate retrieval quality.")
     parser.add_argument("--ablate", action="store_true", help="also score variants with one feature switched off")
+    parser.add_argument("--vision", action="store_true", help="also score vision-model image captions")
     args = parser.parse_args()
     questions = load_questions()
     print(f"{len(questions)} questions from {QUESTIONS_FILE.name}")
@@ -140,6 +141,11 @@ def main() -> None:
             no_prefix = build("noprefix", **{"rag_project.config.EMBED_DOC_PREFIX": ""})
             with mock.patch.object(config, "EMBED_QUERY_PREFIX", ""):
                 reports.append(evaluate(no_prefix, questions, "  no nomic prefixes"))
+        if args.ablate or args.vision:
+            vision = build("vision", **{"rag_project.config.IMAGE_DESCRIPTIONS": "vision"})
+            reports.append(evaluate(vision, questions, "  vision-model captions"))
+            both = build("both", **{"rag_project.config.IMAGE_DESCRIPTIONS": "both"})
+            reports.append(evaluate(both, questions, "  hand-written + vision"))
     except OllamaError as exc:
         raise SystemExit(f"Error: {exc}")
     print_reports(reports)
