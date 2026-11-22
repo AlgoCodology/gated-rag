@@ -2,8 +2,8 @@
 
 The whole pipeline, in the order it runs:
 
-    docs/*.md --chunking--> chunks --embedding--> vectors      (index.py, cached)
-    question  --embedding--> vector --similarity--> top chunks (retrieval.py)
+    docs/**/* --loaders--> chunks --embedding--> vectors       (loaders.py, index.py, cached)
+    question  --embedding--> vector --similarity--> children --> parent sections (retrieval.py)
     top chunks + question --prompt--> chat model --> answer    (this file)
 
 Run it:
@@ -13,10 +13,12 @@ Run it:
 
 import argparse
 
+from dataclasses import dataclass
+
 from . import config
 from .index import Index, build_index
 from .ollama_client import OllamaError, ask_llm
-from .retrieval import retrieve
+from .retrieval import Context, retrieve, u_shaped
 
 # The prompt is the "instructions + evidence" we hand to the chat model.
 # Notice what is NOT here: any rule about guessing who the user is. Access
@@ -32,18 +34,38 @@ Context:
 
 Question: {question}"""
 
+NO_ANSWER = "I don't know."
 
-def answer(index: Index, question: str, role: str, show_context: bool = True) -> str:
+
+@dataclass
+class Answer:
+    text: str
+    contexts: list[Context]  # best first: these are the sources
+
+
+def build_prompt(contexts: list[Context], question: str) -> str:
+    """Assemble the prompt. Contexts arrive best-first and are re-ordered U-shaped."""
+    blocks = [f"[Source: {c.label}]\n{c.text}" for c in u_shaped(contexts)]
+    return PROMPT_TEMPLATE.format(context="\n\n".join(blocks), question=question)
+
+
+def answer(index: Index, question: str, role: str, show_context: bool = True) -> Answer:
     """Retrieve context for `question` and ask the chat model to answer from it."""
-    results = retrieve(index, question, role)
-    context = "\n\n".join(chunk.text for chunk, _score in results)
+    contexts = retrieve(index, question, role)
 
     if show_context:
-        print("\nRetrieved context (score | access | text):")
-        for chunk, score in results:
-            print(f"  {score:.3f} | {chunk.access:8} | {chunk.text[:80]}")
+        print("\nRetrieved context (score | access | kind | source):")
+        for c in contexts:
+            print(f"  {c.score:.3f} | {c.access:8} | {c.kind:5} | {c.label}")
 
-    return ask_llm(PROMPT_TEMPLATE.format(context=context, question=question))
+    if not contexts:  # nothing similar enough: don't let the model improvise
+        return Answer(NO_ANSWER, [])
+    return Answer(ask_llm(build_prompt(contexts, question)), contexts)
+
+
+def format_sources(contexts: list[Context]) -> str:
+    """List the sources of an answer, e.g. for printing under it."""
+    return "\n".join(f"  [{i}] {c.label}" for i, c in enumerate(contexts, 1))
 
 
 def main() -> None:
@@ -64,7 +86,11 @@ def main() -> None:
         while True:
             question = input("Ask: ").strip()
             if question:
-                print("\n" + answer(index, question, args.role, not args.hide_context) + "\n")
+                result = answer(index, question, args.role, not args.hide_context)
+                print("\n" + result.text)
+                if result.contexts:
+                    print("\nSources:\n" + format_sources(result.contexts))
+                print()
     except OllamaError as exc:
         raise SystemExit(f"Error: {exc}")
     except (KeyboardInterrupt, EOFError):

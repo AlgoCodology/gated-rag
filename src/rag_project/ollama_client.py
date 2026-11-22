@@ -11,6 +11,8 @@ common failures (Ollama not running, model not downloaded, slow response)
 and raise ONE clear error type, `OllamaError`, with advice on how to fix it.
 """
 
+import base64
+
 import numpy as np
 import requests
 
@@ -74,6 +76,7 @@ def ask_llm(prompt: str) -> str:
         {
             "model": config.CHAT_MODEL,
             "stream": False,  # wait for the full answer instead of word-by-word
+            "options": {"num_ctx": config.LLM_NUM_CTX},
             "messages": [{"role": "user", "content": prompt}],
         },
     )
@@ -81,3 +84,25 @@ def ask_llm(prompt: str) -> str:
         return data["message"]["content"]
     except KeyError as exc:
         raise OllamaError(f"Unexpected reply from the chat model: {str(data)[:200]}") from exc
+
+
+def describe_image(image_bytes: bytes, prompt: str, model: str) -> str:
+    """Ask a vision model to describe an image (used for image chunks)."""
+    data = _post(
+        "/api/chat",
+        {
+            "model": model,
+            "stream": False,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt,
+                    "images": [base64.b64encode(image_bytes).decode("ascii")],
+                }
+            ],
+        },
+    )
+    try:
+        return data["message"]["content"].strip()
+    except KeyError as exc:
+        raise OllamaError(f"Unexpected reply from the vision model: {str(data)[:200]}") from exc

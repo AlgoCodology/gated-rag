@@ -20,20 +20,22 @@ WHY CACHE?
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 
 from . import config
-from .chunking import Chunk, load_chunks
+from .chunking import Chunk
+from .loaders import load_chunks
 from .ollama_client import embed
 
 
 @dataclass
 class Index:
-    chunks: list[Chunk]
+    chunks: list[Chunk]  # the small "child" chunks that are searched
     vectors: np.ndarray  # shape (n_chunks, dimensions), each row has length 1
+    parents: dict[str, str] = field(default_factory=dict)  # parent_id -> section text for the LLM
 
 
 def normalize(vectors: np.ndarray) -> np.ndarray:
@@ -42,15 +44,26 @@ def normalize(vectors: np.ndarray) -> np.ndarray:
     return vectors / np.maximum(lengths, 1e-12)  # max() avoids dividing by zero
 
 
+def embedding_text(chunk: Chunk) -> str:
+    """What we actually embed: the heading path plus the text, with nomic's prefix.
+
+    Putting the header path in front gives every chunk its context
+    ("Student Handbook > Library") without storing extra copies of the text.
+    """
+    body = f"{chunk.header_path}\n{chunk.text}" if chunk.header_path else chunk.text
+    return config.EMBED_DOC_PREFIX + body
+
+
 def fingerprint(chunks: list[Chunk]) -> str:
     """A short hash of everything that affects the vectors.
 
     If the text, the embedding model, or the order of chunks changes, the
-    hash changes and the cache is rebuilt. (Access tags don't change the
-    vectors, but we include them so the cache always mirrors the files.)
+    hash changes and the cache is rebuilt. (Access levels and parent links
+    don't change the vectors, so they are not part of the fingerprint: they
+    are re-read from the files at every start.)
     """
     payload = json.dumps(
-        {"model": config.EMBED_MODEL, "chunks": [(c.text, c.source, c.access) for c in chunks]}
+        {"model": config.EMBED_MODEL, "texts": [embedding_text(c) for c in chunks]}
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -79,7 +92,7 @@ def build_index(
     use_cache: bool = True,
 ) -> Index:
     """Load documents, embed them (or reuse the cache) and return an Index."""
-    chunks = load_chunks(docs_dir)
+    chunks, parents = load_chunks(docs_dir)
     if not chunks:
         raise RuntimeError(f"No chunks found. Add .md files to {docs_dir}")
 
@@ -87,9 +100,9 @@ def build_index(
     vectors = _load(cache_file, key) if use_cache else None
     if vectors is None:
         print(f"Embedding {len(chunks)} chunks (this is the slow part)...")
-        vectors = normalize(embed([c.text for c in chunks]))
+        vectors = normalize(embed([embedding_text(c) for c in chunks]))
         if use_cache:
             _save(cache_file, key, vectors)
     else:
         print("Loaded embeddings from cache.")
-    return Index(chunks=chunks, vectors=vectors)
+    return Index(chunks=chunks, vectors=vectors, parents=parents)
