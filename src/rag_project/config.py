@@ -57,11 +57,18 @@ SCORE_THRESHOLD = 0.55
 # and re-order them. Slower than plain search, but sharper. Backends:
 #   "none"   plain embedding search (default)
 #   "bge"    a small cross-encoder, fast (~0.1 s per chunk). Needs: uv sync --extra rerank
+#   "bge-m3" a bigger cross-encoder (568M parameters, ~2.3 GB of memory), multilingual
 #   "judge"  the chat model rates each chunk 0-9, slow (~4 s per chunk), no extra install
+#   "hybrid" bge reads 20 candidates, the judge reads only the best HYBRID_JUDGE_TOP of them
 # Compare them with `python -m rag_project.evaluate --rerank bge judge`.
 RERANKER = "none"
-BGE_MODEL = "BAAI/bge-reranker-base"  # 278M parameters, MIT licence, downloaded on first use
-RERANK_CANDIDATES = {"bge": 20, "judge": 8}  # how many of the best child chunks each backend reads
+BGE_MODELS = {  # cross-encoder weights per backend, downloaded on first use
+    "bge": "BAAI/bge-reranker-base",  # 278M parameters, MIT licence
+    "hybrid": "BAAI/bge-reranker-base",
+    "bge-m3": "BAAI/bge-reranker-v2-m3",  # Apache-2.0
+}
+RERANK_CANDIDATES = {"bge": 20, "bge-m3": 20, "hybrid": 20, "judge": 8}  # child chunks each backend reads
+HYBRID_JUDGE_TOP = 6  # how many of the 20 the judge model reads in "hybrid"
 # Every backend reports relevance on a 0-1 scale. If even the best chunk scores below
 # this, the question is treated as unanswerable ("I don't know"). Calibrate with evaluate.
 RERANK_THRESHOLD = 0.0

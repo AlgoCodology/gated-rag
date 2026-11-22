@@ -249,6 +249,30 @@ class RerankTests(unittest.TestCase):
         self.assertEqual([c.text for c in contexts], ["pub-b", "pub-a"])
         self.assertFalse(any("SECRET" in p for p in seen))
 
+    def test_hybrid_judge_reads_only_the_shortlist_and_the_cross_encoder_cannot_veto(self):
+        from rag_project.rerank import rerank
+        chunks = [Chunk(f"c{i}", "f", "public") for i in range(6)]
+        hits = [(c, 1.0 - i / 10) for i, c in enumerate(chunks)]  # embedding order c0..c5
+
+        class FakeCrossEncoder:
+            def predict(self, pairs, **kwargs):  # loves c5, hates c0
+                return [{"c0": 0.0, "c1": 0.1, "c2": 0.2, "c3": 0.3, "c4": 0.4, "c5": 0.9}[p.split("\n")[-1]] for _, p in pairs]
+
+        asked = []
+
+        def fake_llm(prompt, **kwargs):
+            asked.append(prompt.split("Passage:")[1].split("\n\nRate")[0].strip())
+            return "9" if asked[-1] == "c0" else "1"  # the judge knows c0 is the answer
+
+        with mock.patch("rag_project.rerank._get_bge", return_value=FakeCrossEncoder()), \
+             mock.patch("rag_project.rerank.ask_llm", side_effect=fake_llm), \
+             mock.patch.object(config, "HYBRID_JUDGE_TOP", 3):
+            out = rerank("q", hits, "hybrid")
+        self.assertEqual(len(asked), 3)  # only the shortlist was judged
+        self.assertIn("c0", asked)  # c0 survives although the cross-encoder ranked it last: it ranks 1st by embedding
+        self.assertEqual(out[0][0].text, "c0")  # and the judge puts it first
+        self.assertEqual(sum(1 for _, _, v in out if v == -1.0), 3)  # the rest are unjudged, kept after
+
     def test_unknown_backend_is_rejected(self):
         from rag_project.rerank import rerank
         with self.assertRaises(ValueError):

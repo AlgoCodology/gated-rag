@@ -45,8 +45,9 @@ Rate the passage from 0 to 9: 0 = unrelated, 3 = same topic but does not answer,
 Reply with the single digit only."""
 
 MAX_PASSAGE_CHARS = 1200
-BACKENDS = ("bge", "judge")
-_bge_model = None  # loaded on first use (loading takes a while)
+BACKENDS = ("bge", "bge-m3", "judge", "hybrid")
+RRF_K = 60  # reciprocal-rank-fusion constant (60 is the usual choice)
+_bge_models: dict[str, object] = {}  # loaded on first use (loading takes a while)
 
 
 def passage_text(chunk: Chunk) -> str:
@@ -100,23 +101,50 @@ def judge_scores(question: str, chunks: list[Chunk]) -> list[float]:
 # --- cross-encoder backend --------------------------------------------------------
 
 
-def _get_bge():
-    global _bge_model
-    if _bge_model is None:
+def _get_bge(backend: str = "bge"):
+    name = config.BGE_MODELS[backend]
+    if name not in _bge_models:
         try:
             from sentence_transformers import CrossEncoder
         except ImportError as exc:
             raise RuntimeError("The 'bge' re-ranker needs an extra install: uv sync --extra rerank") from exc
-        _bge_model = CrossEncoder(config.BGE_MODEL, device="cpu")
-    return _bge_model
+        _bge_models[name] = CrossEncoder(name, device="cpu")
+    return _bge_models[name]
 
 
-def bge_scores(question: str, chunks: list[Chunk]) -> list[float]:
+def bge_scores(question: str, chunks: list[Chunk], backend: str = "bge") -> list[float]:
     """Cross-encoder relevance per chunk, already on a 0-1 scale (sigmoid of the model's logit)."""
     if not chunks:
         return []
     pairs = [(question, passage_text(c)) for c in chunks]
-    return [float(s) for s in _get_bge().predict(pairs, show_progress_bar=False)]
+    return [float(s) for s in _get_bge(backend).predict(pairs, show_progress_bar=False)]
+
+
+# --- hybrid backend ---------------------------------------------------------------
+
+
+def _hybrid(question: str, hits: list[tuple[Chunk, float]], n: int) -> list[tuple[Chunk, float, float]]:
+    """Cheap cross-encoder over `n` candidates, then the judge over only the best few.
+
+    The judge's shortlist is chosen by reciprocal-rank fusion of the embedding rank and
+    the cross-encoder rank (a chunk either method likes stays in): the cross-encoder
+    alone sometimes buries the right chunk (tables, CSV rows), so it must not veto.
+    """
+    pool = hits[:n]
+    chunks = [chunk for chunk, _ in pool]
+    cross = bge_scores(question, chunks, "hybrid")
+    cross_rank = {i: r for r, i in enumerate(sorted(range(len(pool)), key=lambda i: cross[i], reverse=True))}
+    fused = [1 / (RRF_K + i) + 1 / (RRF_K + cross_rank[i]) for i in range(len(pool))]  # pool is in embedding order
+    order = sorted(range(len(pool)), key=lambda i: fused[i], reverse=True)
+    shortlist, rest = order[: config.HYBRID_JUDGE_TOP], order[config.HYBRID_JUDGE_TOP :]
+    verdicts = judge_scores(question, [chunks[i] for i in shortlist])
+    judged = sorted(
+        ((pool[i][0], pool[i][1], v, fused[i]) for i, v in zip(shortlist, verdicts)),
+        key=lambda t: (t[2], t[3]),
+        reverse=True,
+    )
+    unjudged = [(pool[i][0], pool[i][1], -1.0) for i in rest]  # already in fused order
+    return [(c, e, v) for c, e, v, _ in judged] + unjudged + [(c, e, -1.0) for c, e in hits[n:]]
 
 
 # --- public API ---------------------------------------------------------------------
@@ -141,8 +169,10 @@ def rerank(
     if backend not in BACKENDS:
         raise ValueError(f"unknown re-ranker {backend!r} (use one of {BACKENDS})")
     n = n or candidates_for(backend)
+    if backend == "hybrid":
+        return _hybrid(question, hits, n)
     chunks = [chunk for chunk, _ in hits[:n]]
-    scores = (bge_scores if backend == "bge" else judge_scores)(question, chunks)
+    scores = judge_scores(question, chunks) if backend == "judge" else bge_scores(question, chunks, backend)
     scored = [(chunk, emb, rel) for (chunk, emb), rel in zip(hits[:n], scores)]
     scored.sort(key=lambda t: (t[2], t[1]), reverse=True)  # relevance first, embedding score breaks ties
     return scored + [(chunk, emb, -1.0) for chunk, emb in hits[n:]]

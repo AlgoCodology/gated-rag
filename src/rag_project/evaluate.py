@@ -32,6 +32,7 @@ from unittest import mock
 
 from . import config, index as index_mod
 from .ollama_client import OllamaError, embed
+from .rerank import BACKENDS
 from .retrieval import expand_to_parents, top_chunks
 
 QUESTIONS_FILE = config.PROJECT_ROOT / "eval" / "questions.jsonl"
@@ -153,11 +154,12 @@ def print_reports(reports: list[Report]) -> None:
         f"cover only the {main.n_questions['answerable']} answerable ones; restricted questions are scored "
         "as leaks and unanswerable ones by abstention."
     )
-    print(f"\nBy difficulty tier, '{main.name}':")
-    print(f"  {'tier':<8}{'n':>4}{'R@1':>7}{'R@3':>7}{'R@5':>7}{'MRR':>7}")
-    for tier in sorted(main.ranks):
-        m = metrics(main.ranks[tier])
-        print(f"  {tier:<8}{m['n']:>4}{m['R@1']:>7.2f}{m['R@3']:>7.2f}{m['R@5']:>7.2f}{m['MRR']:>7.2f}")
+    print("\nBy difficulty tier, every setup:")
+    print(f"  {'setup':<30}{'tier':<7}{'n':>4}{'R@1':>7}{'R@3':>7}{'R@5':>7}{'MRR':>7}")
+    for tier in sorted({t for r in reports for t in r.ranks}):
+        for r in reports:
+            m = metrics(r.ranks[tier])
+            print(f"  {r.name:<30}{tier:<7}{m['n']:>4}{m['R@1']:>7.2f}{m['R@3']:>7.2f}{m['R@5']:>7.2f}{m['MRR']:>7.2f}")
     for tier, (leaks, total) in sorted(main.leaks.items()):
         print(f"  leak test, {tier}: {leaks}/{total} leaked")
 
@@ -204,7 +206,7 @@ def main() -> None:
     parser.add_argument("--ablate", action="store_true", help="also score variants with one feature switched off")
     parser.add_argument("--vision", action="store_true", help="also score vision-model image captions")
     parser.add_argument(
-        "--rerank", nargs="+", choices=("bge", "judge"), default=[],
+        "--rerank", nargs="+", choices=BACKENDS, default=[],
         help="also score these re-rankers (the judge is slow the first time; verdicts are cached)",
     )
     args = parser.parse_args()
