@@ -38,7 +38,7 @@ class ChunkingTests(unittest.TestCase):
         text = "# A\n\n## B\n\nUnder B, a paragraph long enough that it will not be merged into anything else at all.\n\n" \
                "## C\n\n### D\n\nUnder D, another paragraph long enough that it will not be merged into anything else."
         chunks, _ = chunks_of(text)
-        self.assertEqual([c.header_path for c in chunks], ["Doc > A > B", "Doc > A > C > D"])
+        self.assertEqual([c.header_path for c in chunks], ["A > B", "A > C > D"])  # H1 replaces the file title
 
     def test_tables_and_lists_stay_whole(self):
         text = "## T\n\n| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n\n- one\n- two\n- three"
@@ -93,7 +93,7 @@ class LoaderTests(unittest.TestCase):
             sections = load_html(f)
         kinds = [b.kind for s in sections for b in s.blocks]
         self.assertEqual(kinds, ["text", "list", "table"])
-        self.assertEqual(sections[0].header_path, "P > T > Sec")
+        self.assertEqual(sections[0].header_path, "T > Sec")
 
     def test_csv_rows_and_parent_table(self):
         with tempfile.TemporaryDirectory() as tmp:

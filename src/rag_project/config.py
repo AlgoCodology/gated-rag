@@ -41,7 +41,10 @@ CANDIDATES = 12  # how many small child chunks to fetch per question
 TOP_K = 5  # how many parent sections (after de-duplication) go into the prompt
 # If even the best child scores below this, we skip the chat model and say
 # "I don't know". Calibrate it with `python -m rag_project.evaluate`.
-SCORE_THRESHOLD = 0.0
+# Measured on eval/questions.jsonl: the weakest answerable question scored 0.618,
+# the best off-topic one 0.733 (the ranges overlap), so 0.60 is a cautious choice
+# that never rejects a question we can answer.
+SCORE_THRESHOLD = 0.60
 
 # --- Access control ----------------------------------------------------------
 # Every chunk is tagged with one of these levels (see chunking.py).

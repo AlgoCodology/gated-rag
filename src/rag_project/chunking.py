@@ -126,7 +126,9 @@ def parse_markdown(markdown: str, source: str, root: str = "") -> list[Section]:
             current.blocks.append(block)
 
     def path() -> str:
-        return " > ".join(([root] if root else []) + [t for _, t in stack])
+        # The file title only prefixes the path when the document has no H1 of its own.
+        has_title = bool(stack) and stack[0][0] == 1
+        return " > ".join(([root] if root and not has_title else []) + [t for _, t in stack])
 
     for line in markdown.splitlines():
         if in_fence:
