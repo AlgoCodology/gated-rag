@@ -112,13 +112,22 @@ def retrieve(
     k: int = config.TOP_K,
     threshold: float = config.SCORE_THRESHOLD,
     use_parents: bool = True,
+    use_judge: bool | None = None,
 ) -> list[Context]:
     """Embed the question and return up to k visible contexts, best first.
 
-    Returns an empty list when nothing is similar enough (below `threshold`).
+    Returns an empty list when nothing is similar enough (below `threshold`),
+    or, with the judge on, when the judge finds nothing that answers the question.
     """
     question_vector = embed([config.EMBED_QUERY_PREFIX + question])[0]
     hits = top_chunks(index, question_vector, role, config.CANDIDATES)
     if not hits or hits[0][1] < threshold:
         return []
+    if config.USE_JUDGE if use_judge is None else use_judge:
+        from .rerank import rerank  # imported here: the judge is optional
+
+        judged = rerank(question, hits)
+        if judged[0][2] < config.JUDGE_THRESHOLD:
+            return []
+        hits = [(chunk, score) for chunk, score, _ in judged]
     return expand_to_parents(index, hits, k, use_parents)

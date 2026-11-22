@@ -14,6 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DOCS_DIR = PROJECT_ROOT / "docs"  # the knowledge base: Markdown files we search
 CACHE_FILE = PROJECT_ROOT / ".cache" / "index.npz"  # saved embeddings (see index.py)
 CAPTION_CACHE_FILE = PROJECT_ROOT / ".cache" / "captions.json"  # saved image descriptions
+JUDGE_CACHE_FILE = PROJECT_ROOT / ".cache" / "judge.json"  # saved relevance verdicts (rerank.py)
 
 # --- Ollama (the local server that runs the AI models) -----------------------
 OLLAMA_URL = "http://localhost:11434"
@@ -46,10 +47,16 @@ CANDIDATES = 12  # how many small child chunks to fetch per question
 TOP_K = 5  # how many parent sections (after de-duplication) go into the prompt
 # If even the best child scores below this, we skip the chat model and say
 # "I don't know". Calibrate it with `python -m rag_project.evaluate`.
-# Measured on eval/questions.jsonl: the weakest answerable question scored 0.618,
-# the best off-topic one 0.733 (the ranges overlap), so 0.60 is a cautious choice
-# that never rejects a question we can answer.
-SCORE_THRESHOLD = 0.60
+# Measured on the 60 answerable questions: the weakest scored 0.583, while near-topic
+# questions with no answer score up to ~0.73 (the ranges overlap), so no cutoff
+# separates them. 0.55 only rejects clearly unrelated questions and never an answerable one.
+# The judge model (see rerank.py) is the better filter for the near-topic cases.
+SCORE_THRESHOLD = 0.55
+
+# Optional re-ranking with a judge model (rerank.py): slower, sharper.
+USE_JUDGE = False  # switch on after checking `evaluate --rerank`
+JUDGE_CANDIDATES = 8  # how many of the best child chunks the judge reads per question
+JUDGE_THRESHOLD = 0  # best judge digit (0-9) below this = "I don't know"; calibrate with evaluate
 
 # --- Access control ----------------------------------------------------------
 # Every chunk is tagged with one of these levels (see chunking.py).

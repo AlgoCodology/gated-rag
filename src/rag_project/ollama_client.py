@@ -70,14 +70,23 @@ def embed(texts: list[str]) -> np.ndarray:
     return np.vstack(batches)
 
 
-def ask_llm(prompt: str) -> str:
-    """Send one prompt to the chat model and return its answer text."""
+def ask_llm(prompt: str, max_tokens: int | None = None, temperature: float | None = None) -> str:
+    """Send one prompt to the chat model and return its answer text.
+
+    `max_tokens` caps the length of the reply and `temperature=0` makes it
+    repeatable; the relevance judge (rerank.py) uses both.
+    """
+    options: dict = {"num_ctx": config.LLM_NUM_CTX}
+    if max_tokens is not None:
+        options["num_predict"] = max_tokens
+    if temperature is not None:
+        options["temperature"] = temperature
     data = _post(
         "/api/chat",
         {
             "model": config.CHAT_MODEL,
             "stream": False,  # wait for the full answer instead of word-by-word
-            "options": {"num_ctx": config.LLM_NUM_CTX},
+            "options": options,
             "messages": [{"role": "user", "content": prompt}],
         },
     )

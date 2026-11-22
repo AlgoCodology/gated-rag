@@ -181,6 +181,58 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(fake.call_args.args[0], [config.EMBED_QUERY_PREFIX + "hello"])
 
 
+class JudgeTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        patcher = mock.patch.object(config, "JUDGE_CACHE_FILE", Path(self._tmp.name) / "judge.json")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self._tmp.cleanup)
+        self.hits = [(Chunk("weak", "f", "public"), 0.9), (Chunk("strong", "f", "public"), 0.5),
+                     (Chunk("tail", "f", "public"), 0.4)]
+
+    def fake_llm(self, prompt, **kwargs):
+        return "9" if "strong" in prompt.split("Passage:")[1] else "2"
+
+    def test_parse_score(self):
+        from rag_project.rerank import parse_score
+        self.assertEqual(parse_score("7"), 7)
+        self.assertEqual(parse_score("Score: 4."), 4)
+        self.assertEqual(parse_score("no idea"), 0)
+
+    def test_judge_overrules_embedding_order_and_skips_the_tail(self):
+        from rag_project.rerank import rerank
+        with mock.patch("rag_project.rerank.ask_llm", side_effect=self.fake_llm):
+            out = rerank("q", self.hits, n=2)
+        self.assertEqual([(c.text, j) for c, _, j in out], [("strong", 9), ("weak", 2), ("tail", -1)])
+
+    def test_verdicts_are_cached(self):
+        from rag_project.rerank import rerank
+        fake = mock.Mock(side_effect=self.fake_llm)
+        with mock.patch("rag_project.rerank.ask_llm", fake):
+            rerank("q", self.hits, n=2)
+            rerank("q", self.hits, n=2)
+        self.assertEqual(fake.call_count, 2)  # the second call came entirely from the cache
+
+    def test_retrieve_abstains_when_judge_finds_nothing(self):
+        index = Index([c for c, _ in self.hits], normalize(np.eye(3)))
+        with mock.patch("rag_project.retrieval.embed", return_value=np.array([[1.0, 0.0, 0.0]])), \
+             mock.patch("rag_project.rerank.ask_llm", return_value="1"), \
+             mock.patch.object(config, "JUDGE_THRESHOLD", 5):
+            self.assertEqual(retrieve(index, "q", "public", threshold=0.0, use_judge=True), [])
+            with mock.patch.object(config, "JUDGE_THRESHOLD", 0):
+                self.assertTrue(retrieve(index, "q", "public", threshold=0.0, use_judge=True))
+
+    def test_judge_never_sees_hidden_chunks(self):
+        index = Index([Chunk("pub", "f", "public"), Chunk("SECRET", "f", "internal")], normalize(np.eye(2)))
+        seen = []
+        with mock.patch("rag_project.retrieval.embed", return_value=np.array([[1.0, 1.0]])), \
+             mock.patch("rag_project.rerank.ask_llm", side_effect=lambda p, **k: seen.append(p) or "5"):
+            retrieve(index, "q", "public", threshold=0.0, use_judge=True)
+        self.assertTrue(seen)
+        self.assertFalse(any("SECRET" in p for p in seen))
+
+
 class IndexTests(unittest.TestCase):
     def test_embedding_text_has_prefix_and_header_path(self):
         c = Chunk("Opening hours", "f", "public", header_path="Doc > Hours")
