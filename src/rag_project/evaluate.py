@@ -3,14 +3,19 @@
 Run it (needs Ollama for the embeddings):
     uv run python -m rag_project.evaluate                # score the current setup
     uv run python -m rag_project.evaluate --ablate       # compare setups side by side
+    uv run python -m rag_project.evaluate --vision       # also compare image-description modes
 
-The question file (eval/questions.jsonl) has three kinds of question:
+The question file (eval/questions.jsonl) has three kinds of question, and each has a
+"tier" ("easy" if missing, or "hard"):
     answerable    a fact that is in the corpus. We check whether it appears in the
                   retrieved context, and at which rank (Recall@1/3/5 and MRR).
+                  A question can need SEVERAL facts ("needs": [...]): multi-hop and
+                  aggregation questions only count as found when ALL of them are in
+                  the retrieved context, and the rank is that of the last one found.
     restricted    a public user asks for an internal secret. PASS = the secret is
                   nowhere in the retrieved context (a leak would be a FAIL).
-    unanswerable  not in the corpus at all. We record the best similarity score,
-                  which helps choose SCORE_THRESHOLD (abstaining is better than guessing).
+    unanswerable  not in the corpus at all. We record the best similarity score, and how
+                  many the SCORE_THRESHOLD would correctly turn away.
 
 "Rank" is the position of the first retrieved context that contains the expected
 text (and comes from the expected source, if the question names one).
@@ -19,8 +24,9 @@ text (and comes from the expected source, if the question names one).
 import argparse
 import json
 import statistics
+from collections import defaultdict
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from unittest import mock
 
@@ -29,83 +35,108 @@ from .ollama_client import OllamaError, embed
 from .retrieval import expand_to_parents, top_chunks
 
 QUESTIONS_FILE = config.PROJECT_ROOT / "eval" / "questions.jsonl"
+CUTOFF = 3  # an answerable question that is not found in the top 3 is listed as a problem
 
 
 def load_questions(path: Path = QUESTIONS_FILE) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def metrics(ranks: list[int | None]) -> dict:
+    """Recall@1/3/5 and MRR for a list of ranks (None = not found)."""
+    n = len(ranks)
+    if not n:
+        return {"n": 0, "R@1": 0.0, "R@3": 0.0, "R@5": 0.0, "MRR": 0.0}
+    return {
+        "n": n,
+        **{f"R@{k}": sum(1 for r in ranks if r and r <= k) / n for k in (1, 3, 5)},
+        "MRR": sum(1 / r for r in ranks if r) / n,
+    }
+
+
 @dataclass
 class Report:
     name: str
-    recall: dict[int, float]
-    mrr: float
-    leaks: int
-    restricted: int
-    answerable_scores: list[float]
-    unanswerable_scores: list[float]
-    misses: list[str]
+    ranks: dict[str, list[int | None]] = field(default_factory=lambda: defaultdict(list))  # by tier
+    leaks: dict[str, list[int]] = field(default_factory=lambda: defaultdict(lambda: [0, 0]))  # tier -> [leaks, total]
+    answerable_scores: list[float] = field(default_factory=list)
+    unanswerable_scores: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
+    misses: list[str] = field(default_factory=list)
+
+    def all_ranks(self) -> list[int | None]:
+        return [r for ranks in self.ranks.values() for r in ranks]
+
+    def total_leaks(self) -> tuple[int, int]:
+        return sum(v[0] for v in self.leaks.values()), sum(v[1] for v in self.leaks.values())
+
+
+def find_rank(contexts, needs: list[dict]) -> int | None:
+    """Rank of the answer: for several needed facts, the position of the LAST one found."""
+    ranks = []
+    for need in needs:
+        position = next(
+            (
+                i
+                for i, c in enumerate(contexts, 1)
+                if need["contains"].lower() in c.text.lower() and need.get("source", "") in c.source
+            ),
+            None,
+        )
+        if position is None:
+            return None
+        ranks.append(position)
+    return max(ranks)
 
 
 def evaluate(index: index_mod.Index, questions: list[dict], name: str = "current", use_parents: bool = True) -> Report:
-    ranks: list[int | None] = []
-    misses: list[str] = []
-    leaks = restricted = 0
-    answerable_scores: list[float] = []
-    unanswerable_scores: list[float] = []
-
+    report = Report(name)
     for item in questions:
+        tier = item.get("tier", "easy")
         question_vector = embed([config.EMBED_QUERY_PREFIX + item["q"]])[0]
         hits = top_chunks(index, question_vector, item["role"], config.CANDIDATES)
         best = hits[0][1] if hits else 0.0
         contexts = expand_to_parents(index, hits, config.TOP_K, use_parents)
 
         if item["type"] == "answerable":
-            answerable_scores.append(best)
-            rank = None
-            for position, c in enumerate(contexts, 1):
-                if item["contains"].lower() in c.text.lower() and item.get("source", "") in c.source:
-                    rank = position
-                    break
-            ranks.append(rank)
-            if rank is None or rank > 3:
-                misses.append(f"rank {rank}: {item['q']}")
+            needs = item.get("needs") or [{"contains": item["contains"], "source": item.get("source", "")}]
+            rank = find_rank(contexts, needs)
+            report.answerable_scores.append(best)
+            report.ranks[tier].append(rank)
+            if rank is None or rank > CUTOFF:
+                report.misses.append(f"[{tier}] rank {rank}: {item['q']}")
         elif item["type"] == "restricted":
-            restricted += 1
+            report.leaks[tier][1] += 1
             if any(item["secret"].lower() in c.text.lower() or c.access != "public" for c in contexts):
-                leaks += 1
-                misses.append(f"LEAK: {item['q']}")
+                report.leaks[tier][0] += 1
+                report.misses.append(f"[{tier}] LEAK: {item['q']}")
         else:
-            unanswerable_scores.append(best)
-
-    n = len(ranks)
-    return Report(
-        name=name,
-        recall={k: sum(1 for r in ranks if r and r <= k) / n for k in (1, 3, 5)},
-        mrr=sum(1 / r for r in ranks if r) / n,
-        leaks=leaks,
-        restricted=restricted,
-        answerable_scores=answerable_scores,
-        unanswerable_scores=unanswerable_scores,
-        misses=misses,
-    )
+            report.unanswerable_scores[tier].append(best)
+    return report
 
 
 def print_reports(reports: list[Report]) -> None:
-    print(f"\n{'setup':<26}{'R@1':>7}{'R@3':>7}{'R@5':>7}{'MRR':>7}{'leaks':>8}")
+    print(f"\n{'setup':<30}{'n':>4}{'R@1':>7}{'R@3':>7}{'R@5':>7}{'MRR':>7}{'leaks':>8}")
     for r in reports:
-        print(f"{r.name:<26}{r.recall[1]:>7.2f}{r.recall[3]:>7.2f}{r.recall[5]:>7.2f}{r.mrr:>7.2f}{r.leaks:>5}/{r.restricted}")
+        m = metrics(r.all_ranks())
+        leaks, total = r.total_leaks()
+        print(f"{r.name:<30}{m['n']:>4}{m['R@1']:>7.2f}{m['R@3']:>7.2f}{m['R@5']:>7.2f}{m['MRR']:>7.2f}{leaks:>5}/{total}")
+
     main = reports[0]
-    if main.unanswerable_scores and main.answerable_scores:
-        low, high = min(main.answerable_scores), max(main.unanswerable_scores)
-        print(f"\nBest-child score, answerable questions:   min {low:.3f}  median {statistics.median(main.answerable_scores):.3f}")
-        print(f"Best-child score, unanswerable questions: max {high:.3f}  median {statistics.median(main.unanswerable_scores):.3f}")
-        if high < low:
-            print(f"A threshold between {high:.3f} and {low:.3f} separates them perfectly "
-                  f"(try SCORE_THRESHOLD = {(high + low) / 2:.2f}).")
-        else:
-            print("The score ranges overlap: any threshold will wrongly reject or accept some questions; "
-                  f"a cautious choice is just below the weakest answerable score ({low:.3f}).")
+    print(f"\nBy difficulty tier, '{main.name}':")
+    print(f"  {'tier':<8}{'n':>4}{'R@1':>7}{'R@3':>7}{'R@5':>7}{'MRR':>7}")
+    for tier in sorted(main.ranks):
+        m = metrics(main.ranks[tier])
+        print(f"  {tier:<8}{m['n']:>4}{m['R@1']:>7.2f}{m['R@3']:>7.2f}{m['R@5']:>7.2f}{m['MRR']:>7.2f}")
+    for tier, (leaks, total) in sorted(main.leaks.items()):
+        print(f"  leak test, {tier}: {leaks}/{total} leaked")
+
+    if main.answerable_scores and main.unanswerable_scores:
+        weakest = min(main.answerable_scores)
+        print(f"\nAbstention (threshold {config.SCORE_THRESHOLD:.2f}; weakest answerable score {weakest:.3f}):")
+        for tier, scores in sorted(main.unanswerable_scores.items()):
+            rejected = sum(1 for s in scores if s < config.SCORE_THRESHOLD)
+            print(f"  {tier:<6} unanswerable: {rejected}/{len(scores)} turned away; "
+                  f"best scores median {statistics.median(scores):.3f}, max {max(scores):.3f}")
     if main.misses:
         print(f"\nProblems in '{main.name}':")
         for line in main.misses:
@@ -142,10 +173,9 @@ def main() -> None:
             with mock.patch.object(config, "EMBED_QUERY_PREFIX", ""):
                 reports.append(evaluate(no_prefix, questions, "  no nomic prefixes"))
         if args.ablate or args.vision:
-            vision = build("vision", **{"rag_project.config.IMAGE_DESCRIPTIONS": "vision"})
-            reports.append(evaluate(vision, questions, "  vision-model captions"))
-            both = build("both", **{"rag_project.config.IMAGE_DESCRIPTIONS": "both"})
-            reports.append(evaluate(both, questions, "  hand-written + vision"))
+            for mode, label in [("sidecar", "hand-written image text"), ("vision", "vision-model captions")]:
+                index = build(mode, **{"rag_project.config.IMAGE_DESCRIPTIONS": mode})
+                reports.append(evaluate(index, questions, f"  {label}"))
     except OllamaError as exc:
         raise SystemExit(f"Error: {exc}")
     print_reports(reports)
