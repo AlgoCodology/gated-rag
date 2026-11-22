@@ -53,10 +53,18 @@ TOP_K = 5  # how many parent sections (after de-duplication) go into the prompt
 # The judge model (see rerank.py) is the better filter for the near-topic cases.
 SCORE_THRESHOLD = 0.55
 
-# Optional re-ranking with a judge model (rerank.py): slower, sharper.
-USE_JUDGE = False  # switch on after checking `evaluate --rerank`
-JUDGE_CANDIDATES = 8  # how many of the best child chunks the judge reads per question
-JUDGE_THRESHOLD = 0  # best judge digit (0-9) below this = "I don't know"; calibrate with evaluate
+# Optional re-ranking (rerank.py): read the best few chunks together with the question
+# and re-order them. Slower than plain search, but sharper. Backends:
+#   "none"   plain embedding search (default)
+#   "bge"    a small cross-encoder, fast (~0.1 s per chunk). Needs: uv sync --extra rerank
+#   "judge"  the chat model rates each chunk 0-9, slow (~4 s per chunk), no extra install
+# Compare them with `python -m rag_project.evaluate --rerank bge judge`.
+RERANKER = "none"
+BGE_MODEL = "BAAI/bge-reranker-base"  # 278M parameters, MIT licence, downloaded on first use
+RERANK_CANDIDATES = {"bge": 20, "judge": 8}  # how many of the best child chunks each backend reads
+# Every backend reports relevance on a 0-1 scale. If even the best chunk scores below
+# this, the question is treated as unanswerable ("I don't know"). Calibrate with evaluate.
+RERANK_THRESHOLD = 0.0
 
 # --- Access control ----------------------------------------------------------
 # Every chunk is tagged with one of these levels (see chunking.py).

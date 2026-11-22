@@ -61,8 +61,8 @@ class Report:
     leaks: dict[str, list[int]] = field(default_factory=lambda: defaultdict(lambda: [0, 0]))  # tier -> [leaks, total]
     answerable_scores: list[float] = field(default_factory=list)
     unanswerable_scores: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
-    judge_answerable: list[int] = field(default_factory=list)  # best judge digit per answerable question
-    judge_unanswerable: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
+    rel_answerable: list[float] = field(default_factory=list)  # best re-ranker relevance (0-1) per answerable question
+    rel_unanswerable: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
     n_questions: dict[str, int] = field(default_factory=lambda: defaultdict(int))  # by question type
     misses: list[str] = field(default_factory=list)
 
@@ -96,30 +96,34 @@ def evaluate(
     questions: list[dict],
     name: str = "current",
     use_parents: bool = True,
-    use_judge: bool = False,
+    reranker: str = "none",
 ) -> Report:
+    """Score one setup. `reranker` is "none", "bge" or "judge" (see rerank.py)."""
     report = Report(name)
+    wanted = config.CANDIDATES
+    if reranker != "none":
+        from .rerank import candidates_for, rerank
+
+        wanted = max(wanted, candidates_for(reranker))
     for item in questions:
         tier = item.get("tier", "easy")
         report.n_questions[item["type"]] += 1
         question_vector = embed([config.EMBED_QUERY_PREFIX + item["q"]])[0]
-        hits = top_chunks(index, question_vector, item["role"], config.CANDIDATES)
+        hits = top_chunks(index, question_vector, item["role"], wanted)
         best = hits[0][1] if hits else 0.0
-        best_judge = None
-        if use_judge and hits:
-            from .rerank import rerank
-
-            judged = rerank(item["q"], hits)
-            best_judge = judged[0][2]
-            hits = [(chunk, score) for chunk, score, _ in judged]
+        best_rel = None
+        if reranker != "none" and hits:
+            scored = rerank(item["q"], hits, reranker)
+            best_rel = scored[0][2]
+            hits = [(chunk, score) for chunk, score, _ in scored]
         contexts = expand_to_parents(index, hits, config.TOP_K, use_parents)
 
         if item["type"] == "answerable":
             needs = item.get("needs") or [{"contains": item["contains"], "source": item.get("source", "")}]
             rank = find_rank(contexts, needs)
             report.answerable_scores.append(best)
-            if best_judge is not None:
-                report.judge_answerable.append(best_judge)
+            if best_rel is not None:
+                report.rel_answerable.append(best_rel)
             report.ranks[tier].append(rank)
             if rank is None or rank > CUTOFF:
                 report.misses.append(f"[{tier}] rank {rank}: {item['q']}")
@@ -130,8 +134,8 @@ def evaluate(
                 report.misses.append(f"[{tier}] LEAK: {item['q']}")
         else:
             report.unanswerable_scores[tier].append(best)
-            if best_judge is not None:
-                report.judge_unanswerable[tier].append(best_judge)
+            if best_rel is not None:
+                report.rel_unanswerable[tier].append(best_rel)
     return report
 
 
@@ -164,21 +168,22 @@ def print_reports(reports: list[Report]) -> None:
             rejected = sum(1 for s in scores if s < config.SCORE_THRESHOLD)
             print(f"  {tier:<6} unanswerable: {rejected}/{len(scores)} turned away; "
                   f"best scores median {statistics.median(scores):.3f}, max {max(scores):.3f}")
-    judged = next((r for r in reports if r.judge_answerable), None)
-    if judged:
+    for r in reports:
+        if not r.rel_answerable:
+            continue
+        total = sum(len(v) for v in r.rel_unanswerable.values())
         print(
-            f"\nJudge digit (0-9) of the best candidate, '{judged.name.strip()}': answerable min "
-            f"{min(judged.judge_answerable)}, median {statistics.median(judged.judge_answerable):g}"
+            f"\nRelevance (0-1) of the best candidate, '{r.name.strip()}': answerable min "
+            f"{min(r.rel_answerable):.3f}, median {statistics.median(r.rel_answerable):.3f}"
         )
-        for tier, digits in sorted(judged.judge_unanswerable.items()):
-            print(f"  {tier:<6} unanswerable digits: {sorted(digits)}")
-        total = sum(len(d) for d in judged.judge_unanswerable.values())
-        for cut in range(2, 10):
-            turned = sum(1 for ds in judged.judge_unanswerable.values() for d in ds if d < cut)
-            lost = sum(1 for d in judged.judge_answerable if d < cut)
+        for tier, values in sorted(r.rel_unanswerable.items()):
+            print(f"  {tier:<6} unanswerable: {[round(v, 2) for v in sorted(values)]}")
+        for cut in (0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8):
+            turned = sum(1 for vs in r.rel_unanswerable.values() for v in vs if v < cut)
+            lost = sum(1 for v in r.rel_answerable if v < cut)
             print(
-                f"  JUDGE_THRESHOLD {cut}: turns away {turned}/{total} unanswerable, "
-                f"wrongly rejects {lost}/{len(judged.judge_answerable)} answerable"
+                f"  RERANK_THRESHOLD {cut:.2f}: turns away {turned}/{total} unanswerable, "
+                f"wrongly rejects {lost}/{len(r.rel_answerable)} answerable"
             )
     if main.misses:
         print(f"\nProblems in '{main.name}':")
@@ -198,7 +203,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate retrieval quality.")
     parser.add_argument("--ablate", action="store_true", help="also score variants with one feature switched off")
     parser.add_argument("--vision", action="store_true", help="also score vision-model image captions")
-    parser.add_argument("--rerank", action="store_true", help="also score the judge re-ranker (slow the first time)")
+    parser.add_argument(
+        "--rerank", nargs="+", choices=("bge", "judge"), default=[],
+        help="also score these re-rankers (the judge is slow the first time; verdicts are cached)",
+    )
     args = parser.parse_args()
     questions = load_questions()
     print(f"{len(questions)} questions from {QUESTIONS_FILE.name}")
@@ -207,8 +215,8 @@ def main() -> None:
         full = build("full")
         reports = [evaluate(full, questions, "full (current)")]
         reports.append(evaluate(full, questions, "  children only (no parents)", use_parents=False))
-        if args.rerank:
-            reports.append(evaluate(full, questions, "  + judge re-ranking", use_judge=True))
+        for backend in args.rerank:
+            reports.append(evaluate(full, questions, f"  + {backend} re-ranking", reranker=backend))
         if args.ablate:
             no_header = build(
                 "noheader",

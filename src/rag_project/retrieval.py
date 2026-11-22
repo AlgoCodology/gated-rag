@@ -112,22 +112,27 @@ def retrieve(
     k: int = config.TOP_K,
     threshold: float = config.SCORE_THRESHOLD,
     use_parents: bool = True,
-    use_judge: bool | None = None,
+    reranker: str | None = None,
 ) -> list[Context]:
     """Embed the question and return up to k visible contexts, best first.
 
     Returns an empty list when nothing is similar enough (below `threshold`),
-    or, with the judge on, when the judge finds nothing that answers the question.
+    or, with a re-ranker on, when it finds nothing that answers the question.
+    `reranker` overrides config.RERANKER ("none", "bge" or "judge").
     """
+    reranker = reranker or config.RERANKER
+    wanted = config.CANDIDATES
+    if reranker != "none":
+        from .rerank import candidates_for, rerank  # imported here: re-ranking is optional
+
+        wanted = max(wanted, candidates_for(reranker))
     question_vector = embed([config.EMBED_QUERY_PREFIX + question])[0]
-    hits = top_chunks(index, question_vector, role, config.CANDIDATES)
+    hits = top_chunks(index, question_vector, role, wanted)
     if not hits or hits[0][1] < threshold:
         return []
-    if config.USE_JUDGE if use_judge is None else use_judge:
-        from .rerank import rerank  # imported here: the judge is optional
-
-        judged = rerank(question, hits)
-        if judged[0][2] < config.JUDGE_THRESHOLD:
+    if reranker != "none":
+        scored = rerank(question, hits, reranker)
+        if scored[0][2] < config.RERANK_THRESHOLD:
             return []
-        hits = [(chunk, score) for chunk, score, _ in judged]
+        hits = [(chunk, score) for chunk, score, _ in scored]
     return expand_to_parents(index, hits, k, use_parents)

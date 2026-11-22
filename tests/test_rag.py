@@ -181,7 +181,7 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(fake.call_args.args[0], [config.EMBED_QUERY_PREFIX + "hello"])
 
 
-class JudgeTests(unittest.TestCase):
+class RerankTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         patcher = mock.patch.object(config, "JUDGE_CACHE_FILE", Path(self._tmp.name) / "judge.json")
@@ -203,34 +203,62 @@ class JudgeTests(unittest.TestCase):
     def test_judge_overrules_embedding_order_and_skips_the_tail(self):
         from rag_project.rerank import rerank
         with mock.patch("rag_project.rerank.ask_llm", side_effect=self.fake_llm):
-            out = rerank("q", self.hits, n=2)
-        self.assertEqual([(c.text, j) for c, _, j in out], [("strong", 9), ("weak", 2), ("tail", -1)])
+            out = rerank("q", self.hits, "judge", n=2)
+        self.assertEqual([(c.text, round(j, 3)) for c, _, j in out],
+                         [("strong", 1.0), ("weak", round(2 / 9, 3)), ("tail", -1.0)])  # digit / 9; tail unread
 
     def test_verdicts_are_cached(self):
         from rag_project.rerank import rerank
         fake = mock.Mock(side_effect=self.fake_llm)
         with mock.patch("rag_project.rerank.ask_llm", fake):
-            rerank("q", self.hits, n=2)
-            rerank("q", self.hits, n=2)
+            rerank("q", self.hits, "judge", n=2)
+            rerank("q", self.hits, "judge", n=2)
         self.assertEqual(fake.call_count, 2)  # the second call came entirely from the cache
 
     def test_retrieve_abstains_when_judge_finds_nothing(self):
         index = Index([c for c, _ in self.hits], normalize(np.eye(3)))
         with mock.patch("rag_project.retrieval.embed", return_value=np.array([[1.0, 0.0, 0.0]])), \
              mock.patch("rag_project.rerank.ask_llm", return_value="1"), \
-             mock.patch.object(config, "JUDGE_THRESHOLD", 5):
-            self.assertEqual(retrieve(index, "q", "public", threshold=0.0, use_judge=True), [])
-            with mock.patch.object(config, "JUDGE_THRESHOLD", 0):
-                self.assertTrue(retrieve(index, "q", "public", threshold=0.0, use_judge=True))
+             mock.patch.object(config, "RERANK_THRESHOLD", 0.5):
+            self.assertEqual(retrieve(index, "q", "public", threshold=0.0, reranker="judge"), [])
+            with mock.patch.object(config, "RERANK_THRESHOLD", 0.0):
+                self.assertTrue(retrieve(index, "q", "public", threshold=0.0, reranker="judge"))
 
     def test_judge_never_sees_hidden_chunks(self):
         index = Index([Chunk("pub", "f", "public"), Chunk("SECRET", "f", "internal")], normalize(np.eye(2)))
         seen = []
         with mock.patch("rag_project.retrieval.embed", return_value=np.array([[1.0, 1.0]])), \
              mock.patch("rag_project.rerank.ask_llm", side_effect=lambda p, **k: seen.append(p) or "5"):
-            retrieve(index, "q", "public", threshold=0.0, use_judge=True)
+            retrieve(index, "q", "public", threshold=0.0, reranker="judge")
         self.assertTrue(seen)
         self.assertFalse(any("SECRET" in p for p in seen))
+
+    def test_bge_backend_orders_by_cross_encoder_score_and_never_sees_hidden_chunks(self):
+        index = Index([Chunk("pub-a", "f", "public"), Chunk("pub-b", "f", "public"), Chunk("SECRET", "f", "internal")],
+                      normalize(np.eye(3)))
+        seen = []
+
+        class FakeCrossEncoder:
+            def predict(self, pairs, **kwargs):
+                seen.extend(p for _, p in pairs)
+                return [0.9 if "pub-b" in p else 0.1 for _, p in pairs]  # the cross-encoder prefers pub-b
+
+        with mock.patch("rag_project.retrieval.embed", return_value=np.array([[1.0, 0.5, 1.0]])), \
+             mock.patch("rag_project.rerank._get_bge", return_value=FakeCrossEncoder()):
+            contexts = retrieve(index, "q", "public", threshold=0.0, reranker="bge")
+        self.assertEqual([c.text for c in contexts], ["pub-b", "pub-a"])
+        self.assertFalse(any("SECRET" in p for p in seen))
+
+    def test_unknown_backend_is_rejected(self):
+        from rag_project.rerank import rerank
+        with self.assertRaises(ValueError):
+            rerank("q", self.hits, "magic")
+
+    def test_no_reranker_means_no_reranking_code_runs(self):
+        index = Index([c for c, _ in self.hits], normalize(np.eye(3)))
+        with mock.patch("rag_project.retrieval.embed", return_value=np.array([[1.0, 0.0, 0.0]])), \
+             mock.patch("rag_project.rerank.ask_llm", side_effect=AssertionError("judge must not run")):
+            self.assertTrue(retrieve(index, "q", "public", threshold=0.0, reranker="none"))
 
 
 class IndexTests(unittest.TestCase):
