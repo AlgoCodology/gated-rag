@@ -1,9 +1,31 @@
-# RAG from scratch: a beginner-friendly walkthrough
+# Local RAG, done properly
 
-A tiny chatbot that answers questions about your own documents using AI models running **locally** on your computer (via [Ollama](https://ollama.com)). No cloud, no API keys, light models only (`nomic-embed-text` and `qwen3:4b-instruct`), and a few hundred commented lines of code.
+**A fully local question-answering system over your documents (Markdown, HTML, PDF, CSV, code and images) that you can read in an afternoon, with an evaluation harness that tells you whether each idea actually helped.**
 
-> **RAG** = **R**etrieval-**A**ugmented **G**eneration.
-> A language model doesn't know your private documents. So before asking it a question, we *retrieve* the relevant paragraphs and paste them into the prompt. The model then *generates* an answer from that evidence.
+No cloud, no API keys, no LangChain. Runs on a laptop CPU with small [Ollama](https://ollama.com) models (`nomic-embed-text` for search, `qwen3:4b-instruct` for answers).
+
+> **RAG** = **R**etrieval-**A**ugmented **G**eneration. A language model doesn't know your documents, so before asking it a question we *retrieve* the relevant passages and put them in the prompt. It then *generates* an answer from that evidence.
+
+## Why it's worth a look
+
+- **Access control that can't be talked out of.** Customers must not see internal documents. Instead of asking the model nicely, forbidden chunks are filtered out *before ranking* (inside the database query for Qdrant), so the model never sees them. Untagged content fails closed. Leak-tested: 0 of 11 restricted questions leak, in every setup.
+- **Every feature is measured.** `python -m rag_project.evaluate` scores 82 questions (easy and hard, plus restricted and unanswerable ones) with Recall@k, MRR, leak tests and abstention calibration. Several "obvious" ideas lost to the numbers, and the README says so.
+- **Structure-aware chunking.** Heading paths (`Handbook > Library > Fees`) are embedded with each chunk, tables and code are never cut in half, and small chunks are searched while the larger parent section goes to the model ("small-to-big").
+- **Real multimodal corpus.** A fictional Dutch university ("Home University") with Markdown, HTML, CSV, PDFs (heading and table detection), Python code (split with `ast`) and images (hand-written text or vision-model captions, cached).
+- **Two-stage re-ranking, benchmarked.** A cross-encoder reads 20 candidates and the chat model judges the best 6 (`hybrid`). It lifted hard-question Recall@3 from 0.71 to 0.90.
+- **Scales without code changes.** The vector store switches from NumPy to Qdrant by corpus size, controlled by one number in `config.py`.
+- **Readable.** A few hundred commented lines per file, a docstring on each explaining the idea, and 36 tests that run without Ollama.
+
+### Measured results (60 answerable questions)
+
+| Setup | Easy R@1 | Hard R@3 | Hard MRR | Speed per question |
+|---|---|---|---|---|
+| plain embedding search | 0.95 | 0.71 | 0.71 | instant |
+| + cross-encoder (`bge`) | 0.90 | 0.86 | 0.75 | ~1.5 s |
+| + LLM judge | 0.97 | 0.90 | 0.73 | ~36 s |
+| **+ hybrid (default)** | **0.97** | **0.90** | **0.78** | ~5 s |
+
+Reproduce with `uv run python -m rag_project.evaluate --rerank judge bge bge-m3 hybrid`. Details are in [Re-ranking](#re-ranking).
 
 ## The big picture
 
@@ -50,14 +72,15 @@ flowchart LR
 
 ## Quick start
 
-1. Install [Ollama](https://ollama.com) and download the two models:
+1. Install [Ollama](https://ollama.com) and download the two models (optionally `qwen2.5vl:3b`, which captions images that have no hand-written description):
    ```
    ollama pull nomic-embed-text
    ollama pull qwen3:4b-instruct
    ```
-2. Install dependencies and run (from the project folder):
+2. Install [uv](https://docs.astral.sh/uv/) (it provides Python 3.13), clone, install and run:
    ```
-   uv sync
+   git clone https://github.com/OWNER/REPO.git && cd REPO
+   uv sync --extra rerank          # the extra is the cross-encoder for the default re-ranker
    uv run python -m rag_project.rag --role public      # you are a customer
    uv run python -m rag_project.rag --role internal     # you are an employee
    ```
@@ -65,7 +88,7 @@ flowchart LR
    - `What is the server room access method?` → public: *"I don't know"*, internal: staff card + PIN
    - `What is the pass mark for an exam?` → both get *5.5*, with sources listed under the answer
 
-Options: `--rebuild` (ignore cache), `--hide-context` (don't print retrieved chunks).
+Options: `--rebuild` (ignore cache), `--hide-context` (don't print retrieved chunks), `--rerank none|bge|bge-m3|judge|hybrid` (`none` is fastest). The first start embeds the corpus and caches it.
 
 Run the tests (no Ollama needed): `uv run python -m unittest discover tests`
 Measure retrieval quality (needs Ollama): `uv run python -m rag_project.evaluate --ablate`
@@ -114,6 +137,7 @@ Read the files in pipeline order. Each starts with a docstring that explains the
 | 4 | [ollama_client.py](src/rag_project/ollama_client.py) | 2/4/8. Talk to models | embeddings, chat, vision, batching, clear errors |
 | 5 | [index.py](src/rag_project/index.py) | 2-3. Embed & store | normalization, nomic prefixes, caching with a fingerprint |
 | 6 | [retrieval.py](src/rag_project/retrieval.py) | 5-6. Filter & search | access filtering, cosine similarity, parent expansion, threshold, U-shaped order |
+| 6b | [rerank.py](src/rag_project/rerank.py), [vectorstore.py](src/rag_project/vectorstore.py) | 6. Re-rank, store | cross-encoder + LLM judge; NumPy or Qdrant by corpus size |
 | 7 | [rag.py](src/rag_project/rag.py) | 7-8. Prompt & answer | the prompt, sources, the chat loop |
 | 8 | [evaluate.py](src/rag_project/evaluate.py) | measuring | Recall@k, MRR, leak test, threshold calibration |
 
@@ -134,4 +158,10 @@ The alarm code is 4417.
 
 A file outside those two folders is treated as **internal**, so a misplaced file is hidden instead of leaked. The cache refreshes by itself when the files change.
 
-> `src/rag_project/expense.py` is an unrelated budget script from earlier. It isn't part of the RAG pipeline.
+## Contributing
+
+Issues and pull requests are welcome, especially new documents for the Home University corpus and new evaluation questions in `eval/questions.jsonl`. Please run `uv run python -m unittest discover tests` first, and `evaluate` if you touch retrieval, so a change comes with numbers.
+
+## License
+
+[MIT](LICENSE). Third-party images and the *Lost in the Middle* paper keep their own licences, see [ATTRIBUTION.md](ATTRIBUTION.md).

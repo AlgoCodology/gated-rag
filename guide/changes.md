@@ -18,4 +18,3 @@ Other details:
 - The handbook's paragraphs are now tagged. The alarm code, Wi-Fi password, repair contact, PTO and shift rules are `internal`. The hours, the drink and the dog policy are `public`.
 - Project guides live in `guide/`, not `docs/`, because everything in `docs/` is indexed as knowledge.
 - Behavior difference: the default role is `public` (least privilege).
-- Not changed: `expense.py`, which is unrelated to RAG.

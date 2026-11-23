@@ -1,7 +1,8 @@
 [project]
 name = "rag_project"
 version = "0.1.0"
-description = "Add your description here"
+description = "Local RAG over Markdown, HTML, PDF, CSV, code and images: access control before ranking, hybrid re-ranking, Qdrant auto-switch, and an evaluation harness."
+license = "MIT"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
