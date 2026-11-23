@@ -184,6 +184,28 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(fake.call_args.args[0], [config.EMBED_QUERY_PREFIX + "hello"])
 
 
+class QdrantStoreTests(unittest.TestCase):
+    """The vector database must agree with NumPy and enforce access inside the query."""
+
+    def test_matches_numpy_and_filters_access(self):
+        from rag_project.vectorstore import QdrantStore
+
+        rng = np.random.default_rng(0)
+        vectors = normalize(rng.normal(size=(40, 8)))
+        chunks = [Chunk(f"c{i}", "f", "internal" if i % 3 == 0 else "public") for i in range(40)]
+        question = rng.normal(size=8)
+        with tempfile.TemporaryDirectory() as tmp:
+            store = QdrantStore.build(chunks, vectors, "k" * 32, Path(tmp) / "q")
+            index = Index(chunks, vectors, {}, store=store)
+            plain = Index(chunks, vectors, {})
+            for role in ("public", "internal"):
+                a = [(c.text, round(s, 4)) for c, s in top_chunks(index, question, role, 5)]
+                b = [(c.text, round(s, 4)) for c, s in top_chunks(plain, question, role, 5)]
+                self.assertEqual(a, b)
+            self.assertTrue(all(c.access == "public" for c, _ in top_chunks(index, question, "public", 40)))
+            store.client.close()
+
+
 class RerankTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

@@ -43,7 +43,10 @@ EMBED_QUERY_PREFIX = "search_query: "
 CHILD_MAX_CHARS = 800  # a child longer than this is split (sentences / rows / items)
 PARENT_MAX_CHARS = 2000  # the section text handed to the chat model per hit
 
-CANDIDATES = 12  # how many small child chunks to fetch per question
+VECTOR_STORE = "numpy"  # "numpy" (in-memory, exact) or "qdrant" (vector database, see vectorstore.py)
+QDRANT_URL = None  # None = embedded local mode (a folder under .cache/); or e.g. "http://localhost:6333"
+
+CANDIDATES = 12 # how many small child chunks to fetch per question
 TOP_K = 5  # how many parent sections (after de-duplication) go into the prompt
 # If even the best child scores below this, we skip the chat model and say
 # "I don't know". Calibrate it with `python -m rag_project.evaluate`.

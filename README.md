@@ -84,6 +84,10 @@ Embedding search is fast but coarse, so the best candidates are re-read together
 
 `RERANK_THRESHOLD = 0.30` turns away some unanswerable questions without rejecting any answerable one.
 
+## Vector store: NumPy or Qdrant
+
+By default search is an exact NumPy matrix product, ideal up to a few thousand chunks. For a corpus that keeps growing, set `VECTOR_STORE = "qdrant"` in `config.py` ([vectorstore.py](src/rag_project/vectorstore.py)): vectors live in an on-disk Qdrant collection (embedded mode, no server; set `QDRANT_URL` for a real one) and the role filter is applied inside the database query. `evaluate --qdrant` confirmed identical results to NumPy on the current corpus (and 0 leaks), so NumPy stays the default until the corpus is large enough to need it.
+
 ## The corpus: Home University
 
 `docs/` holds a multimodal knowledge base for a fictional Dutch university (Amersfoort). Files in `docs/public/` are visible to everyone; files in `docs/internal/` only to the `internal` role.

@@ -36,6 +36,7 @@ class Index:
     chunks: list[Chunk]  # the small "child" chunks that are searched
     vectors: np.ndarray  # shape (n_chunks, dimensions), each row has length 1
     parents: dict[str, str] = field(default_factory=dict)  # parent_id -> section text for the LLM
+    store: object | None = None  # optional vector database (vectorstore.QdrantStore); None = search `vectors`
 
 
 def normalize(vectors: np.ndarray) -> np.ndarray:
@@ -105,4 +106,9 @@ def build_index(
             _save(cache_file, key, vectors)
     else:
         print("Loaded embeddings from cache.")
-    return Index(chunks=chunks, vectors=vectors, parents=parents)
+    store = None
+    if config.VECTOR_STORE == "qdrant":
+        from .vectorstore import QdrantStore
+
+        store = QdrantStore.build(chunks, vectors, key, cache_file.with_suffix(".qdrant"))
+    return Index(chunks=chunks, vectors=vectors, parents=parents, store=store)

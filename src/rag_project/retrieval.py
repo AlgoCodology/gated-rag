@@ -61,6 +61,9 @@ def top_chunks(
     Returns up to k (chunk, score) pairs, best first.
     """
     allowed = config.ROLE_PERMISSIONS[role]
+    if index.store is not None:  # vector database: the role filter is part of the query itself
+        found = index.store.search(normalize(question_vector), allowed, k)
+        return [(index.chunks[i], score) for i, score in found]
     # Boolean mask: True for chunks this role may see.
     visible = np.array([c.access in allowed for c in index.chunks])
 

@@ -193,12 +193,12 @@ def print_reports(reports: list[Report]) -> None:
             print("  -", line)
 
 
-def build(name: str, **patches) -> index_mod.Index:
+def build(name: str, cache_name: str | None = None, **patches) -> index_mod.Index:
     """Build an index with some settings patched, using a separate cache file per setup."""
     with ExitStack() as stack:
         for target, value in patches.items():
             stack.enter_context(mock.patch(target, value))
-        return index_mod.build_index(cache_file=config.PROJECT_ROOT / ".cache" / f"eval_{name}.npz")
+        return index_mod.build_index(cache_file=config.PROJECT_ROOT / ".cache" / f"eval_{cache_name or name}.npz")
 
 
 def main() -> None:
@@ -209,6 +209,7 @@ def main() -> None:
         "--rerank", nargs="+", choices=BACKENDS, default=[],
         help="also score these re-rankers (the judge is slow the first time; verdicts are cached)",
     )
+    parser.add_argument("--qdrant", action="store_true", help="also score search through the Qdrant vector store")
     args = parser.parse_args()
     questions = load_questions()
     print(f"{len(questions)} questions from {QUESTIONS_FILE.name}")
@@ -219,6 +220,9 @@ def main() -> None:
         reports.append(evaluate(full, questions, "  children only (no parents)", use_parents=False))
         for backend in args.rerank:
             reports.append(evaluate(full, questions, f"  + {backend} re-ranking", reranker=backend))
+        if args.qdrant:  # same vectors as "full" (shared cache), searched through Qdrant
+            qdrant = build("qdrant", cache_name="full", **{"rag_project.config.VECTOR_STORE": "qdrant"})
+            reports.append(evaluate(qdrant, questions, "  qdrant store"))
         if args.ablate:
             no_header = build(
                 "noheader",
