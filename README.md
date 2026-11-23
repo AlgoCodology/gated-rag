@@ -79,7 +79,7 @@ flowchart LR
    ```
 2. Install [uv](https://docs.astral.sh/uv/) (it provides Python 3.13), clone, install and run:
    ```
-   git clone https://github.com/OWNER/REPO.git && cd REPO
+   git clone https://github.com/AlgoCodology/local-rag.git && cd local-rag
    uv sync --extra rerank          # the extra is the cross-encoder for the default re-ranker
    uv run python -m rag_project.rag --role public      # you are a customer
    uv run python -m rag_project.rag --role internal     # you are an employee
