@@ -1,0 +1,23 @@
+[
+ {
+  "role": "public",
+  "q": "What is the server room access method?",
+  "a": "I don't know.",
+  "sources": "  [1] public/student_handbook.md > Student Handbook 2025-2026 > IT services for students > Accounts and Wi-Fi\n  [2] public/lost_in_the_middle_liu_2023.pdf > arXiv:2307.03172v3 [cs.CL] 20 Nov 2023 (p.12)\n  [3] public/lost_in_the_middle_liu_2023.pdf > arXiv:2307.03172v3 [cs.CL] 20 Nov 2023 (p.7)",
+  "seconds": 174.9
+ },
+ {
+  "role": "internal",
+  "q": "What is the server room access method?",
+  "a": "The server room is accessible only with a red staff card and PIN. The maintenance code is rotated monthly by Facilities.",
+  "sources": "  [1] internal/it_security_policy.md > IT Security Policy (Staff Only) > 4. Network\n  [2] internal/it_security_policy.md > IT Security Policy (Staff Only) > 2. Accounts and authentication\n  [3] public/student_handbook.md > Student Handbook 2025-2026 > IT services for students > Accounts and Wi-Fi",
+  "seconds": 73.9
+ },
+ {
+  "role": "public",
+  "q": "What is the pass mark for an exam?",
+  "a": "The pass mark for an exam is 5.5.",
+  "sources": "  [1] public/education_examination_regulations.md > Education and Examination Regulations (OER) 2025-2026 > Chapter 3. Examinations > Article 3.1 Grading\n  [2] public/education_examination_regulations.md > Education and Examination Regulations (OER) 2025-2026 > Chapter 7. Graduation > Article 7.1 Degree and honours\n  [3] public/education_examination_regulations.md > Education and Examination Regulations (OER) 2025-2026 > Chapter 1. General provisions > Article 1.1 Definitions",
+  "seconds": 30.4
+ }
+]

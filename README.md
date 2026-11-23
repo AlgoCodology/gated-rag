@@ -6,6 +6,10 @@ No cloud, no API keys, no LangChain. Runs on a laptop CPU with small [Ollama](ht
 
 > **RAG** = **R**etrieval-**A**ugmented **G**eneration. A language model doesn't know your documents, so before asking it a question we *retrieve* the relevant passages and put them in the prompt. It then *generates* an answer from that evidence.
 
+![Demo: the same question asked as a customer and as an employee](assets/demo.gif)
+
+*Real answers from the system. The waiting time is shortened in the animation.*
+
 ## Why it's worth a look
 
 - **Access control that can't be talked out of.** Customers must not see internal documents. Instead of asking the model nicely, forbidden chunks are filtered out *before ranking* (inside the database query for Qdrant), so the model never sees them. Untagged content fails closed. Leak-tested: 0 of 11 restricted questions leak, in every setup.
@@ -18,14 +22,14 @@ No cloud, no API keys, no LangChain. Runs on a laptop CPU with small [Ollama](ht
 
 ### Measured results (60 answerable questions)
 
-| Setup | Easy R@1 | Hard R@3 | Hard MRR | Speed per question |
+| Setup | Easy R@1 | Hard R@3 | Hard MRR | Re-ranking time per question (laptop CPU, uncached) |
 |---|---|---|---|---|
 | plain embedding search | 0.95 | 0.71 | 0.71 | instant |
-| + cross-encoder (`bge`) | 0.90 | 0.86 | 0.75 | ~1.5 s |
-| + LLM judge | 0.97 | 0.90 | 0.73 | ~36 s |
-| **+ hybrid (default)** | **0.97** | **0.90** | **0.78** | ~5 s |
+| + cross-encoder (`bge`) | 0.90 | 0.86 | 0.75 | ~1.5-6 s |
+| + LLM judge | 0.97 | 0.90 | 0.73 | ~40-60 s (8 model calls) |
+| **+ hybrid (default)** | **0.97** | **0.90** | **0.78** | ~35-45 s (6 model calls) |
 
-Reproduce with `uv run python -m rag_project.evaluate --rerank judge bge bge-m3 hybrid`. Details are in [Re-ranking](#re-ranking).
+The judge's verdicts are cached on disk, so a repeated question is free. The speed cost is real: on a CPU, quality costs seconds, so set `RERANKER = "bge"` or `"none"` for snappy chat. Reproduce with `uv run python -m rag_project.evaluate --rerank judge bge bge-m3 hybrid`. Details are in [Re-ranking](#re-ranking).
 
 ## The big picture
 
@@ -97,13 +101,13 @@ Measure retrieval quality (needs Ollama): `uv run python -m rag_project.evaluate
 
 Embedding search is fast but coarse, so the best candidates are re-read together with the question (`src/rag_project/rerank.py`). The default is `hybrid`: a small cross-encoder (`bge-reranker-base`) reads 20 candidates, then the chat model rates the best 6. It needs the optional extra: `uv sync --extra rerank`. Set `RERANKER = "none"` in `config.py` for the fastest plain search, or pass `--rerank` choices to the evaluator to compare. Measured on 60 answerable questions:
 
-| Setup | Easy R@1 | Hard R@3 | Hard MRR | Speed per question |
+| Setup | Easy R@1 | Hard R@3 | Hard MRR | Re-ranking time per question (laptop CPU, uncached) |
 |---|---|---|---|---|
 | none | 0.95 | 0.71 | 0.71 | instant |
-| bge | 0.90 | 0.86 | 0.75 | ~1.5 s |
-| bge-m3 | 0.97 | 0.81 | 0.72 | a few s |
-| judge | 0.97 | 0.90 | 0.73 | ~36 s |
-| **hybrid** | 0.97 | 0.90 | 0.78 | ~5 s |
+| bge | 0.90 | 0.86 | 0.75 | ~1.5-6 s |
+| bge-m3 | 0.97 | 0.81 | 0.72 | ~3-10 s |
+| judge | 0.97 | 0.90 | 0.73 | ~40-60 s (8 model calls) |
+| **hybrid** | 0.97 | 0.90 | 0.78 | ~35-45 s (6 model calls) |
 
 `RERANK_THRESHOLD = 0.30` turns away some unanswerable questions without rejecting any answerable one.
 
