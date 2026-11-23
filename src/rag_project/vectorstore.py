@@ -12,7 +12,7 @@ ACCESS CONTROL STAYS IN THE DATABASE QUERY
     retrieval.py, just enforced by the database.
 
 HOW IT IS USED
-    Set config.VECTOR_STORE = "qdrant". It runs in Qdrant's embedded local mode (a folder
+    Chosen automatically by corpus size (config.QDRANT_MIN_CHUNKS, see index.choose_store). It runs in Qdrant's embedded local mode (a folder
     under .cache/, no server). To use a real server later, set config.QDRANT_URL.
     Only the vector and the chunk's position and access level are stored in Qdrant; the
     chunk text stays in the Index (it is re-read from the files at every start).

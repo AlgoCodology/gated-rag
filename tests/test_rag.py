@@ -184,6 +184,15 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(fake.call_args.args[0], [config.EMBED_QUERY_PREFIX + "hello"])
 
 
+class StoreChoiceTests(unittest.TestCase):
+    def test_one_number_decides(self):
+        from rag_project.index import choose_store
+
+        with mock.patch.object(config, "QDRANT_MIN_CHUNKS", 100):
+            self.assertEqual(choose_store(99), "numpy")
+            self.assertEqual(choose_store(100), "qdrant")
+
+
 class QdrantStoreTests(unittest.TestCase):
     """The vector database must agree with NumPy and enforce access inside the query."""
 

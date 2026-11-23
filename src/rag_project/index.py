@@ -87,6 +87,11 @@ def _load(path: Path, key: str) -> np.ndarray | None:
     return None
 
 
+def choose_store(n_chunks: int) -> str:
+    """The vector store for a corpus of this size: one number (config.QDRANT_MIN_CHUNKS) decides."""
+    return "qdrant" if n_chunks >= config.QDRANT_MIN_CHUNKS else "numpy"
+
+
 def build_index(
     docs_dir: Path = config.DOCS_DIR,
     cache_file: Path = config.CACHE_FILE,
@@ -107,7 +112,7 @@ def build_index(
     else:
         print("Loaded embeddings from cache.")
     store = None
-    if config.VECTOR_STORE == "qdrant":
+    if choose_store(len(chunks)) == "qdrant":
         from .vectorstore import QdrantStore
 
         store = QdrantStore.build(chunks, vectors, key, cache_file.with_suffix(".qdrant"))

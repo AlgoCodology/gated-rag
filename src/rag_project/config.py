@@ -43,7 +43,12 @@ EMBED_QUERY_PREFIX = "search_query: "
 CHILD_MAX_CHARS = 800  # a child longer than this is split (sentences / rows / items)
 PARENT_MAX_CHARS = 2000  # the section text handed to the chat model per hit
 
-VECTOR_STORE = "numpy"  # "numpy" (in-memory, exact) or "qdrant" (vector database, see vectorstore.py)
+# The vector store is chosen AUTOMATICALLY from the corpus size (number of chunks):
+#   fewer than QDRANT_MIN_CHUNKS -> "numpy" (in-memory, exact, fastest for small corpora)
+#   at least QDRANT_MIN_CHUNKS   -> "qdrant" (on-disk vector database, scales to millions)
+# This is the one number to tune. It is kept low for now (the corpus has ~400 chunks) so
+# Qdrant gets exercised; raise it (e.g. to 20000) once Qdrant has proven itself.
+QDRANT_MIN_CHUNKS = 300
 QDRANT_URL = None  # None = embedded local mode (a folder under .cache/); or e.g. "http://localhost:6333"
 
 CANDIDATES = 12 # how many small child chunks to fetch per question

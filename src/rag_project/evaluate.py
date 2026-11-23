@@ -209,20 +209,23 @@ def main() -> None:
         "--rerank", nargs="+", choices=BACKENDS, default=[],
         help="also score these re-rankers (the judge is slow the first time; verdicts are cached)",
     )
-    parser.add_argument("--qdrant", action="store_true", help="also score search through the Qdrant vector store")
+    parser.add_argument("--compare-stores", action="store_true", help="also score the vector store that was not auto-selected")
     args = parser.parse_args()
     questions = load_questions()
     print(f"{len(questions)} questions from {QUESTIONS_FILE.name}")
 
     try:
         full = build("full")
-        reports = [evaluate(full, questions, "full (current)")]
+        store = "qdrant" if full.store is not None else "numpy"
+        reports = [evaluate(full, questions, f"full (current, {store})")]
         reports.append(evaluate(full, questions, "  children only (no parents)", use_parents=False))
         for backend in args.rerank:
             reports.append(evaluate(full, questions, f"  + {backend} re-ranking", reranker=backend))
-        if args.qdrant:  # same vectors as "full" (shared cache), searched through Qdrant
-            qdrant = build("qdrant", cache_name="full", **{"rag_project.config.VECTOR_STORE": "qdrant"})
-            reports.append(evaluate(qdrant, questions, "  qdrant store"))
+        if args.compare_stores:  # the store the size rule did NOT pick, with the same vectors
+            other = "numpy" if full.store is not None else "qdrant"
+            limit = 10**9 if other == "numpy" else 0
+            alt = build(other, cache_name="full", **{"rag_project.config.QDRANT_MIN_CHUNKS": limit})
+            reports.append(evaluate(alt, questions, f"  {other} store (forced)"))
         if args.ablate:
             no_header = build(
                 "noheader",

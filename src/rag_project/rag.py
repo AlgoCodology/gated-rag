@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from . import config
 from .index import Index, build_index
 from .ollama_client import OllamaError, ask_llm
+from .rerank import BACKENDS
 from .retrieval import Context, retrieve, u_shaped
 
 # The prompt is the "instructions + evidence" we hand to the chat model.
@@ -49,9 +50,9 @@ def build_prompt(contexts: list[Context], question: str) -> str:
     return PROMPT_TEMPLATE.format(context="\n\n".join(blocks), question=question)
 
 
-def answer(index: Index, question: str, role: str, show_context: bool = True) -> Answer:
+def answer(index: Index, question: str, role: str, show_context: bool = True, reranker: str | None = None) -> Answer:
     """Retrieve context for `question` and ask the chat model to answer from it."""
-    contexts = retrieve(index, question, role)
+    contexts = retrieve(index, question, role, reranker=reranker)
 
     if show_context:
         print("\nRetrieved context (score | access | kind | source):")
@@ -76,6 +77,12 @@ def main() -> None:
         default="public",  # least privilege: you must ask for internal access
         help="who is asking: 'public' (customer) or 'internal' (employee)",
     )
+    parser.add_argument(
+        "--rerank",
+        choices=["none", *BACKENDS],
+        default=None,
+        help=f"re-ranker (default: config.RERANKER = {config.RERANKER!r}); 'none' is fastest",
+    )
     parser.add_argument("--rebuild", action="store_true", help="ignore the embedding cache")
     parser.add_argument("--hide-context", action="store_true", help="don't print retrieved chunks")
     args = parser.parse_args()
@@ -86,12 +93,12 @@ def main() -> None:
         while True:
             question = input("Ask: ").strip()
             if question:
-                result = answer(index, question, args.role, not args.hide_context)
+                result = answer(index, question, args.role, not args.hide_context, args.rerank)
                 print("\n" + result.text)
                 if result.contexts:
                     print("\nSources:\n" + format_sources(result.contexts))
                 print()
-    except OllamaError as exc:
+    except (OllamaError, RuntimeError) as exc:
         raise SystemExit(f"Error: {exc}")
     except (KeyboardInterrupt, EOFError):
         print("\nBye!")

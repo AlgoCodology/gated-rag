@@ -86,7 +86,7 @@ Embedding search is fast but coarse, so the best candidates are re-read together
 
 ## Vector store: NumPy or Qdrant
 
-By default search is an exact NumPy matrix product, ideal up to a few thousand chunks. For a corpus that keeps growing, set `VECTOR_STORE = "qdrant"` in `config.py` ([vectorstore.py](src/rag_project/vectorstore.py)): vectors live in an on-disk Qdrant collection (embedded mode, no server; set `QDRANT_URL` for a real one) and the role filter is applied inside the database query. `evaluate --qdrant` confirmed identical results to NumPy on the current corpus (and 0 leaks), so NumPy stays the default until the corpus is large enough to need it.
+The store is picked automatically from the corpus size. Below `QDRANT_MIN_CHUNKS` (in `config.py`) search is an exact NumPy matrix product, ideal for small corpora. At or above it, vectors live in an on-disk Qdrant collection ([vectorstore.py](src/rag_project/vectorstore.py), embedded mode, no server; set `QDRANT_URL` for a real one) and the role filter is applied inside the database query. That one number is the only control; it is currently low (300, the corpus has ~400 chunks) so Qdrant gets exercised, and is meant to be raised later. `evaluate --compare-stores` scores the store that was not selected, to check both agree.
 
 ## The corpus: Home University
 
