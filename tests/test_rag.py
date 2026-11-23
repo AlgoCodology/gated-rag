@@ -132,6 +132,9 @@ class LoaderTests(unittest.TestCase):
 
 class RetrievalTests(unittest.TestCase):
     def setUp(self):
+        patcher = mock.patch.object(config, "RERANKER", "none")  # these tests are about plain search
+        patcher.start()
+        self.addCleanup(patcher.stop)
         chunks = [Chunk("pub", "f", "public", parent_id="p1"), Chunk("sec", "f", "internal", parent_id="p2")]
         # Both vectors point the same way as the question: "sec" is equally relevant.
         self.index = Index(chunks, normalize(np.array([[1.0, 0.0], [2.0, 0.0]])), {"p1": "PARENT-PUB", "p2": "PARENT-SEC"})

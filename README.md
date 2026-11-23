@@ -70,6 +70,20 @@ Options: `--rebuild` (ignore cache), `--hide-context` (don't print retrieved chu
 Run the tests (no Ollama needed): `uv run python -m unittest discover tests`
 Measure retrieval quality (needs Ollama): `uv run python -m rag_project.evaluate --ablate`
 
+## Re-ranking
+
+Embedding search is fast but coarse, so the best candidates are re-read together with the question (`src/rag_project/rerank.py`). The default is `hybrid`: a small cross-encoder (`bge-reranker-base`) reads 20 candidates, then the chat model rates the best 6. It needs the optional extra: `uv sync --extra rerank`. Set `RERANKER = "none"` in `config.py` for the fastest plain search, or pass `--rerank` choices to the evaluator to compare. Measured on 60 answerable questions:
+
+| Setup | Easy R@1 | Hard R@3 | Hard MRR | Speed per question |
+|---|---|---|---|---|
+| none | 0.95 | 0.71 | 0.71 | instant |
+| bge | 0.90 | 0.86 | 0.75 | ~1.5 s |
+| bge-m3 | 0.97 | 0.81 | 0.72 | a few s |
+| judge | 0.97 | 0.90 | 0.73 | ~36 s |
+| **hybrid** | 0.97 | 0.90 | 0.78 | ~5 s |
+
+`RERANK_THRESHOLD = 0.30` turns away some unanswerable questions without rejecting any answerable one.
+
 ## The corpus: Home University
 
 `docs/` holds a multimodal knowledge base for a fictional Dutch university (Amersfoort). Files in `docs/public/` are visible to everyone; files in `docs/internal/` only to the `internal` role.
