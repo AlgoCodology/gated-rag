@@ -1,4 +1,4 @@
-# Local RAG, done properly
+# gated-rag: local RAG that checks who is asking, and measures itself
 
 **A fully local question-answering system over your documents (Markdown, HTML, PDF, CSV, code and images) that you can read in an afternoon, with an evaluation harness that tells you whether each idea actually helped.**
 
@@ -79,7 +79,7 @@ flowchart LR
    ```
 2. Install [uv](https://docs.astral.sh/uv/) (it provides Python 3.13), clone, install and run:
    ```
-   git clone https://github.com/AlgoCodology/local-rag.git && cd local-rag
+   git clone https://github.com/AlgoCodology/gated-rag.git && cd gated-rag
    uv sync --extra rerank          # the extra is the cross-encoder for the default re-ranker
    uv run python -m rag_project.rag --role public      # you are a customer
    uv run python -m rag_project.rag --role internal     # you are an employee
