@@ -10,11 +10,11 @@ WHY RE-RANK?
     best candidates, so its cost does NOT grow with the size of the corpus.
 
 BACKENDS (config.RERANKER), all returning relevance on a 0-1 scale
-    "hybrid" (default) bge reads 20 candidates, the judge reads the best 6 of them
+    "hybrid" bge reads 20 candidates, the judge reads the best 6 of them
              (chosen by fusing embedding rank and bge rank). Best measured quality.
     "bge-m3" a bigger cross-encoder (BAAI/bge-reranker-v2-m3): best at rejecting
              unanswerable questions, but weaker on hard questions.
-    "bge"    a real cross-encoder (BAAI/bge-reranker-base): one small model that takes
+    "bge"    (default) a real cross-encoder (BAAI/bge-reranker-base): one small model that takes
              "question + chunk" and outputs a score. Fast (~0.1 s per chunk on a CPU),
              so it can read 20+ candidates. Weaker on world knowledge: it may not
              know that "ChatGPT" is "generative AI".
@@ -22,7 +22,7 @@ BACKENDS (config.RERANKER), all returning relevance on a 0-1 scale
              per chunk), but it understands paraphrases and common knowledge.
 
     Candidates are sorted by relevance, with the embedding score breaking ties.
-    If even the best relevance is below config.RERANK_THRESHOLD the question is
+    If even the best relevance is below config.RERANK_THRESHOLDS[backend] the question is
     not answerable from the corpus, so the caller says "I don't know".
 
 SECURITY

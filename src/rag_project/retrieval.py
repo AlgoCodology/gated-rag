@@ -135,7 +135,7 @@ def retrieve(
         return []
     if reranker != "none":
         scored = rerank(question, hits, reranker)
-        if scored[0][2] < config.RERANK_THRESHOLD:
+        if scored[0][2] < config.RERANK_THRESHOLDS[reranker]:
             return []
         hits = [(chunk, score) for chunk, score, _ in scored]
     return expand_to_parents(index, hits, k, use_parents)

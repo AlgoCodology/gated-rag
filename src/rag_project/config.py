@@ -69,7 +69,7 @@ SCORE_THRESHOLD = 0.55
 #   "judge"  the chat model rates each chunk 0-9, slow (~4 s per chunk), no extra install
 #   "hybrid" bge reads 20 candidates, the judge reads only the best HYBRID_JUDGE_TOP of them
 # Compare them with `python -m rag_project.evaluate --rerank bge judge`.
-RERANKER = "hybrid"  # measured best (see evaluate --rerank); "none" = fastest
+RERANKER = "bge"  # fast default (~1.5-6 s); "hybrid" scored best on hard questions but takes ~40 s on a CPU
 BGE_MODELS = {  # cross-encoder weights per backend, downloaded on first use
     "bge": "BAAI/bge-reranker-base",  # 278M parameters, MIT licence
     "hybrid": "BAAI/bge-reranker-base",
@@ -77,10 +77,12 @@ BGE_MODELS = {  # cross-encoder weights per backend, downloaded on first use
 }
 RERANK_CANDIDATES = {"bge": 20, "bge-m3": 20, "hybrid": 20, "judge": 8}  # child chunks each backend reads
 HYBRID_JUDGE_TOP = 6  # how many of the 20 the judge model reads in "hybrid"
-# Every backend reports relevance on a 0-1 scale. If even the best chunk scores below
-# this, the question is treated as unanswerable ("I don't know"). Calibrate with evaluate.
-# Measured for "hybrid": 0.30 turns away 4/11 unanswerable and wrongly rejects 0/60 answerable.
-RERANK_THRESHOLD = 0.30
+# Every backend reports relevance on a 0-1 scale. If even the best chunk scores below the
+# backend's threshold, the question is treated as unanswerable ("I don't know"). The scales
+# differ, so each backend has its own number, calibrated with `evaluate --rerank`:
+#   judge/hybrid 0.30: turns away 4/11 unanswerable, wrongly rejects 0/60 answerable
+#   bge, bge-m3  0.0 : no safe cutoff (any useful value rejects several answerable questions)
+RERANK_THRESHOLDS = {"bge": 0.0, "bge-m3": 0.0, "judge": 0.30, "hybrid": 0.30}
 
 # --- Access control ----------------------------------------------------------
 # Every chunk is tagged with one of these levels (see chunking.py).

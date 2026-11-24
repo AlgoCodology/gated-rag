@@ -253,9 +253,9 @@ class RerankTests(unittest.TestCase):
         index = Index([c for c, _ in self.hits], normalize(np.eye(3)))
         with mock.patch("rag_project.retrieval.embed", return_value=np.array([[1.0, 0.0, 0.0]])), \
              mock.patch("rag_project.rerank.ask_llm", return_value="1"), \
-             mock.patch.object(config, "RERANK_THRESHOLD", 0.5):
+             mock.patch.dict(config.RERANK_THRESHOLDS, {"judge": 0.5}):
             self.assertEqual(retrieve(index, "q", "public", threshold=0.0, reranker="judge"), [])
-            with mock.patch.object(config, "RERANK_THRESHOLD", 0.0):
+            with mock.patch.dict(config.RERANK_THRESHOLDS, {"judge": 0.0}):
                 self.assertTrue(retrieve(index, "q", "public", threshold=0.0, reranker="judge"))
 
     def test_judge_never_sees_hidden_chunks(self):
